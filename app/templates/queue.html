@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block subtitle %}Offense triage queue{% endblock %}
+
+{% block content %}
+<div id="banners"></div>
+
+<div class="cards" id="cards"></div>
+
+<div class="filters">
+  <select id="state">
+    <option value="">All states</option>
+    <option value="PENDING">Pending</option>
+    <option value="IN_PROGRESS">In progress</option>
+    <option value="DONE">Done</option>
+    <option value="FAILED">Failed</option>
+    <option value="DEAD_LETTER">Dead letter</option>
+  </select>
+  <button id="refresh">Refresh</button>
+  <span id="health" class="subtitle"></span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Offense</th><th>Description</th><th>Mag</th>
+      <th>Created</th><th>State</th><th>Verdict</th><th>Summary</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<div id="detail"><div class="panel" id="detailBody"></div></div>
+{% endblock %}
+
+{% block script %}
+const fmt = ms => ms ? new Date(Number(ms)).toLocaleString() : '—';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function loadHealth() {
+  const h = await (await fetch('api/health')).json();
+  const c = h.counts || {};
+  document.getElementById('cards').innerHTML = [
+    ['Pending', c.PENDING], ['In progress', c.IN_PROGRESS], ['Done', c.DONE],
+    ['Failed', c.FAILED], ['Dead letter', c.DEAD_LETTER]
+  ].map(([k, n]) =>
+    `<div class="card"><div class="n">${n || 0}</div><div class="k">${k}</div></div>`
+  ).join('');
+
+  const banners = [];
+  if (h.budget_paused === '1')
+    banners.push('<div class="banner err">Daily token budget reached — the engine has paused. Ingestion continues; nothing is lost.</div>');
+  if (h.last_poll_error)
+    banners.push(`<div class="banner err">Last poll failed: ${esc(h.last_poll_error)}</div>`);
+  if (h.connection_status && h.connection_status !== 'valid')
+    banners.push(`<div class="banner">Claude connection: <b>${esc(h.connection_status)}</b> — check SOC AI Settings in the Admin tab.</div>`);
+  document.getElementById('banners').innerHTML = banners.join('');
+
+  const age = h.oldest_pending_age_seconds || 0;
+  document.getElementById('health').textContent =
+    `oldest pending ${Math.floor(age / 60)}m · last poll ${fmt(h.last_poll_at)}`;
+}
+
+async function loadRows() {
+  const state = document.getElementById('state').value;
+  const items = await (await fetch('api/items?limit=200' + (state ? '&state=' + state : ''))).json();
+  document.getElementById('rows').innerHTML = items.map(i => `
+    <tr onclick="showDetail(${i.offense_id})">
+      <td>${i.offense_id}</td>
+      <td>${esc(i.description).slice(0, 90)}</td>
+      <td>${i.magnitude ?? ''}</td>
+      <td>${fmt(i.first_persisted_time)}</td>
+      <td><span class="pill ${i.state}">${i.state}</span></td>
+      <td>${i.verdict ? `<span class="pill ${i.verdict}">${i.verdict}</span>` : ''}</td>
+      <td>${esc(i.summary || i.last_error || '')}</td>
+    </tr>`).join('') || '<tr><td colspan="7">Queue is empty.</td></tr>';
+}
+
+async function showDetail(id) {
+  const d = await (await fetch('api/items/' + id)).json();
+  const r = d.result;
+  const inv = d.investigation || {};
+  const cost = inv.cost_usd_micros ? (inv.cost_usd_micros / 1e6).toFixed(4) : '0';
+
+  document.getElementById('detailBody').innerHTML = `
+    <h2>Offense ${id} <button style="float:right" onclick="closeDetail()">Close</button></h2>
+    <p>${esc(d.offense.description)}</p>
+    <p class="subtitle">magnitude ${d.offense.magnitude} · severity ${d.offense.severity}
+       · ${d.offense.event_count} events · created ${fmt(d.offense.first_persisted_time)}</p>
+    ${r ? `
+      <p><span class="pill ${r.verdict}">${r.verdict}</span>
+         confidence ${(r.confidence ?? 0).toFixed(2)} ·
+         <b>${esc(r.recommended_action)}</b></p>
+      <p><b>${esc(r.summary)}</b></p>
+      <p>${esc(r.narrative)}</p>
+      <h3>Key findings</h3><ul>${(r.key_findings || []).map(f => `<li>${esc(f)}</li>`).join('')}</ul>
+      <h3>Evidence</h3><ul>${(r.evidence || []).map(e =>
+        `<li>${esc(e.observation)} <span class="subtitle">[events ${(e.supporting_events || []).join(', ')}]</span></li>`).join('')}</ul>
+      <h3>Reasoning gaps</h3><ul>${(r.reasoning_gaps || []).map(g => `<li>${esc(g)}</li>`).join('') || '<li>none</li>'}</ul>
+      <p class="subtitle">${esc(inv.served_by_model || inv.model || '')} ·
+        ${inv.input_tokens || 0} in / ${inv.output_tokens || 0} out ·
+        ${inv.cache_read_tokens || 0} cached · $${cost}</p>
+    ` : `<p class="banner">No investigation result yet.${inv.stop_reason ? ' stop_reason: ' + esc(inv.stop_reason) : ''}</p>`}
+    <button onclick="requeue(${id})">Requeue</button>`;
+  document.getElementById('detail').classList.add('open');
+}
+
+function closeDetail() { document.getElementById('detail').classList.remove('open'); }
+
+async function requeue(id) {
+  await fetch(`api/items/${id}/requeue`, { method: 'POST' });
+  closeDetail(); refresh();
+}
+
+function refresh() { loadHealth(); loadRows(); }
+document.getElementById('refresh').onclick = refresh;
+document.getElementById('state').onchange = loadRows;
+document.getElementById('detail').onclick = e => { if (e.target.id === 'detail') closeDetail(); };
+refresh();
+setInterval(refresh, 15000);
+{% endblock %}

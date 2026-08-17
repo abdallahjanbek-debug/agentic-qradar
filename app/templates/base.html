@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}SOC AI{% endblock %}</title>
+  <style>{% include "socai.css" %}</style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>SOC AI</h1>
+    <span class="subtitle">{% block subtitle %}{% endblock %}</span>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <script>{% block script %}{% endblock %}</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block subtitle %}Settings{% endblock %}
+
+{% block content %}
+<div id="banner"></div>
+
+<form class="settings" onsubmit="return false">
+
+  <fieldset>
+    <legend>Claude connection</legend>
+    <div class="row">
+      <label for="api_key">Anthropic API key</label>
+      <input type="password" id="api_key" placeholder="sk-ant-…" autocomplete="off">
+      <button id="saveKey" class="primary">Save key</button>
+    </div>
+    <div class="hint" id="keyState"></div>
+    <div class="row">
+      <label>Connection</label>
+      <span id="connState" style="flex:1"></span>
+      <button id="testConn">Test connection</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Models</legend>
+    <div class="row">
+      <label for="deep_model">Investigation model</label>
+      <select id="deep_model"></select>
+    </div>
+    <div class="row">
+      <label for="effort">Effort</label>
+      <select id="effort"></select>
+    </div>
+    <div class="hint">Effort applies to the investigation model only — Haiku rejects it.</div>
+    <div class="row">
+      <label for="gate_model">Triage gate model</label>
+      <select id="gate_model"></select>
+    </div>
+    <div class="row">
+      <label for="gate_enabled">Triage gate enabled</label>
+      <select id="gate_enabled"><option value="false">No</option><option value="true">Yes</option></select>
+    </div>
+    <div class="hint">The gate is a pass-through in this build; the setting is wired but has no effect yet.</div>
+    <div class="row">
+      <label for="max_tokens">Max tokens / investigation</label>
+      <input type="number" id="max_tokens" min="1000" step="500">
+    </div>
+    <div class="row">
+      <label for="daily_token_budget">Daily token budget</label>
+      <input type="number" id="daily_token_budget" min="0" step="10000">
+    </div>
+    <div class="hint">0 = unlimited. When exceeded the engine pauses; ingestion continues.</div>
+    <div class="row">
+      <label for="fallbacks_enabled">Refusal fallback</label>
+      <select id="fallbacks_enabled"><option value="true">Enabled</option><option value="false">Disabled</option></select>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Ingestion &amp; workers</legend>
+    <div class="row"><label for="poll_interval_seconds">Poll interval (s)</label><input type="number" id="poll_interval_seconds" min="10"></div>
+    <div class="row"><label for="backfill_days">Backfill on first run (days)</label><input type="number" id="backfill_days" min="0"></div>
+    <div class="row"><label for="worker_concurrency">Worker concurrency</label><input type="number" id="worker_concurrency" min="1" max="16"></div>
+    <div class="hint">Restart the app after changing concurrency — workers start at service boot.</div>
+    <div class="row"><label for="event_sample_size">Event sample size</label><input type="number" id="event_sample_size" min="1" max="500"></div>
+    <div class="row"><label for="event_payload_max_chars">Payload chars / event</label><input type="number" id="event_payload_max_chars" min="0"></div>
+    <div class="row"><label for="ariel_timeout_seconds">Ariel timeout (s)</label><input type="number" id="ariel_timeout_seconds" min="10"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Retention</legend>
+    <div class="row"><label for="retention_investigation_days">Investigations (days)</label><input type="number" id="retention_investigation_days" min="1"></div>
+    <div class="row"><label for="retention_transcript_days">LLM transcripts (days)</label><input type="number" id="retention_transcript_days" min="1"></div>
+    <div class="hint">Transcripts are the bulk of the storage; verdicts and narratives survive their purge.</div>
+  </fieldset>
+
+  <button id="save" class="primary">Save settings</button>
+</form>
+{% endblock %}
+
+{% block script %}
+const FIELDS = ['deep_model','gate_model','gate_enabled','effort','max_tokens',
+  'daily_token_budget','fallbacks_enabled','poll_interval_seconds','backfill_days',
+  'worker_concurrency','event_sample_size','event_payload_max_chars',
+  'ariel_timeout_seconds','retention_investigation_days','retention_transcript_days'];
+
+const KNOWN_MODELS = ['claude-opus-5','claude-sonnet-5','claude-haiku-4-5'];
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function banner(text, cls) {
+  document.getElementById('banner').innerHTML =
+    text ? `<div class="banner ${cls || ''}">${esc(text)}</div>` : '';
+}
+
+function fillSelect(id, values, selected) {
+  const el = document.getElementById(id);
+  el.innerHTML = values.map(v =>
+    `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${esc(v)}</option>`).join('');
+}
+
+async function load() {
+  const d = await (await fetch('api/settings')).json();
+  const s = d.settings;
+
+  const models = Array.from(new Set(KNOWN_MODELS.concat([s.deep_model, s.gate_model])));
+  fillSelect('deep_model', models, s.deep_model);
+  fillSelect('gate_model', models, s.gate_model);
+  fillSelect('effort', d.effort_levels, s.effort);
+
+  FIELDS.forEach(f => {
+    const el = document.getElementById(f);
+    if (el && el.tagName !== 'SELECT') el.value = s[f];
+    else if (el) el.value = s[f];
+  });
+
+  document.getElementById('keyState').textContent = d.key_configured
+    ? `Configured (${d.key_masked}). The key is write-only — it is never returned to this page.`
+    : 'No key saved yet.';
+
+  const status = d.connection_status || 'never tested';
+  document.getElementById('connState').innerHTML =
+    `<span class="pill">${esc(status)}</span> ${d.connection_detail ? esc(d.connection_detail).slice(0,160) : ''}`;
+}
+
+document.getElementById('saveKey').onclick = async () => {
+  const key = document.getElementById('api_key').value.trim();
+  if (!key) return banner('Enter a key first.', 'err');
+  const r = await (await fetch('api/key', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({api_key: key})
+  })).json();
+  document.getElementById('api_key').value = '';
+  banner(r.ok ? 'Key saved and encrypted.' : ('Failed: ' + r.error), r.ok ? 'ok' : 'err');
+  load();
+};
+
+document.getElementById('testConn').onclick = async () => {
+  banner('Testing…');
+  const r = await (await fetch('api/test-connection', {method: 'POST'})).json();
+  const msg = {
+    valid: 'Connected. Key is valid and the API is reachable.',
+    key_rejected: 'The API rejected this key.',
+    unreachable: 'Could not reach api.anthropic.com — check egress and proxy settings.',
+    not_configured: 'No API key has been saved yet.'
+  }[r.status] || ('Error: ' + (r.detail || r.status));
+  banner(msg, r.ok ? 'ok' : 'err');
+  load();
+};
+
+document.getElementById('save').onclick = async () => {
+  const payload = {};
+  FIELDS.forEach(f => {
+    const el = document.getElementById(f);
+    if (el) payload[f] = el.value;
+  });
+  const r = await (await fetch('api/settings', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  })).json();
+  banner(r.ok ? 'Settings saved.' : 'Save failed.', r.ok ? 'ok' : 'err');
+};
+
+load();
+{% endblock %}

@@ -1,0 +1,54 @@
+{
+  "name": "SOC AI",
+  "description": "Automated SOC Level 1 offense triage powered by Claude.",
+  "version": "0.1.0",
+  "uuid": "6f2a1c84-3d5b-4a0e-9c17-8b4e2f0a91d3",
+  "image": "qradar-app-base:4.0.9",
+  "resources": 512,
+  "load_flask": true,
+  "use_qradar_csrf": true,
+  "single_instance_only": true,
+  "authentication": {
+    "oauth2": {
+      "authorisation_flow": "CLIENT_CREDENTIALS",
+      "requested_capabilities": [
+        "SEM"
+      ]
+    }
+  },
+  "areas": [
+    {
+      "id": "socai_queue",
+      "text": "SOC AI",
+      "description": "Automated offense triage queue and investigations",
+      "url": "/queue/",
+      "required_capabilities": []
+    }
+  ],
+  "configuration_pages": [
+    {
+      "id": "socai_settings",
+      "text": "SOC AI Settings",
+      "description": "Configure the Claude connection, models, and retention",
+      "url": "/admin/",
+      "icon": "settings.png",
+      "required_capabilities": [
+        "ADMIN"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "name": "socai-ingest",
+      "command": "python3 -m app.ingest",
+      "directory": "/opt/app-root/app/",
+      "version": "1"
+    },
+    {
+      "name": "socai-engine",
+      "command": "python3 -m app.engine",
+      "directory": "/opt/app-root/app/",
+      "version": "1"
+    }
+  ]
+}

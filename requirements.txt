@@ -1,0 +1,11 @@
+# Runtime dependencies.
+#
+# QRadar best practice: dependencies must be BUNDLED with the app, never fetched
+# from the internet at install time. Before packaging, vendor these into
+# container/pip/ with:
+#
+#     pip download -r requirements.txt -d container/pip/ --only-binary=:all:
+#
+# Flask and qpylib are provided by the qradar-app-base image and are not listed.
+
+anthropic>=0.60.0
