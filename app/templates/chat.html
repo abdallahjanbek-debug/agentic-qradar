@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Admin</title>
+    <link href="static/app.css" rel="stylesheet">
+  </head>
+  <body>
+    <main class="chat">
+      <header class="chat-header">
+        <h1>AI Admin</h1>
+        <p>An AI assistant for administering QRadar.</p>
+      </header>
+
+      <section id="messages" class="messages" aria-live="polite">
+        <div class="message assistant">
+          <div class="bubble">
+            <p>Hi. Ask me about your QRadar deployment. To start with, I can check whether a log source is connected:</p>
+            <div class="suggestions">
+              <button type="button" class="suggestion">Is 10.0.0.1 connected?</button>
+              <button type="button" class="suggestion">Is Office 365 sending events?</button>
+              <button type="button" class="suggestion">Is fw01.example.local sending logs?</button>
+            </div>
+            <p class="hint">
+              To check many at once, upload an Excel file with IPs and/or hostnames in columns A
+              and B (<a href="api/bulk_template" download>download a template</a>). You get back
+              a workbook listing connected and not connected log sources.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <form id="ask-form" class="composer" autocomplete="off">
+        <input id="question" name="question" type="text" maxlength="2000"
+               placeholder="Ask about your QRadar deployment" aria-label="Your question" required>
+        <button id="send" type="submit">Ask</button>
+        <label id="upload-label" class="upload" title="Check a list of IPs and hostnames from an Excel file">
+          Upload Excel
+          <input id="upload" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+        </label>
+      </form>
+    </main>
+
+    <script src="static/qjslib/qappfw.min.js"></script>
+    <script src="static/chat.js"></script>
+  </body>
+</html>

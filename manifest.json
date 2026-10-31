@@ -1,0 +1,34 @@
+{
+  "name": "AI Admin",
+  "description": "AI assistant for QRadar administrators.",
+  "version": "0.3.0",
+  "uuid": "f781e08d-13c2-471d-94da-9608d21b540e",
+  "image": "qradar-app-base:4.0.2",
+  "use_qradar_csrf": "true",
+  "single_instance_only": "true",
+  "resources": {
+    "memory": 200
+  },
+  "areas": [
+    {
+      "id": "AIAdminMain",
+      "text": "AI Admin",
+      "description": "AI assistant for QRadar administration",
+      "url": "index",
+      "required_capabilities": [
+        "ADMIN"
+      ]
+    }
+  ],
+  "configuration_pages": [
+    {
+      "text": "AI Admin Settings",
+      "description": "QRadar API token and Anthropic API key used by AI Admin",
+      "url": "settings",
+      "icon": null,
+      "required_capabilities": [
+        "ADMIN"
+      ]
+    }
+  ]
+}

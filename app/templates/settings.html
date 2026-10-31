@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Admin Settings</title>
+    <link href="static/app.css" rel="stylesheet">
+  </head>
+  <body>
+    <main class="page">
+      <header class="chat-header">
+        <h1>AI Admin Settings</h1>
+        <p>Credentials are encrypted in the app's storage and are never shown again after saving.</p>
+      </header>
+
+      <section class="card" data-setting="qradar_token">
+        <h2>QRadar API token</h2>
+        <p class="help">
+          AI Admin calls the QRadar API with this token. Create an authorized service in
+          Admin &gt; Authorized Services for a user role with the <strong>Admin</strong>
+          capability, then paste its token here.
+        </p>
+        <p class="status" aria-live="polite">Loading…</p>
+        <form class="secret-form" autocomplete="off">
+          <input type="password" name="value" placeholder="Paste a new token"
+                 aria-label="QRadar API token" autocomplete="new-password" spellcheck="false">
+          <button type="submit">Save</button>
+          <button type="button" class="secondary" data-action="test">Test</button>
+          <button type="button" class="danger" data-action="delete">Remove</button>
+        </form>
+        <p class="result" aria-live="polite"></p>
+      </section>
+
+      <section class="card" data-setting="anthropic_api_key">
+        <h2>Anthropic API key</h2>
+        <p class="help">
+          Used for AI Admin's Claude features (model <code>claude-opus-5-5</code>). Create a key
+          in the Claude Console. The app reaches api.anthropic.com through QRadar's proxy
+          settings, if any.
+        </p>
+        <p class="status" aria-live="polite">Loading…</p>
+        <form class="secret-form" autocomplete="off">
+          <input type="password" name="value" placeholder="Paste a new key (sk-ant-…)"
+                 aria-label="Anthropic API key" autocomplete="new-password" spellcheck="false">
+          <button type="submit">Save</button>
+          <button type="button" class="secondary" data-action="test">Test</button>
+          <button type="button" class="danger" data-action="delete">Remove</button>
+        </form>
+        <p class="result" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script src="static/qjslib/qappfw.min.js"></script>
+    <script src="static/settings.js"></script>
+  </body>
+</html>

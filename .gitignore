@@ -1,0 +1,22 @@
+# Local SDK environment: contains a live QRadar token. Never commit or package it.
+qenv.ini
+
+# Local persistent store created by `qapp run`
+store/
+
+# Build output
+*.zip
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+
+# Vendored wheels/RPMs are reproducible from requirements.txt; commit them only if you prefer
+# reproducible offline builds over a smaller repo.
+# container/pip/*.whl
+
+.DS_Store
+.idea/
+.vscode/
