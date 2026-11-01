@@ -37,13 +37,69 @@ body {
   font: 14px/1.45 "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
 }
 
+.agent {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  height: 100%;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 8px 16px 16px;
+  border-right: 1px solid var(--border);
+}
+.new-chat {
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.chat-list { flex: 1; overflow-y: auto; margin: 12px 0; padding: 0; list-style: none; }
+.chat-item { display: flex; align-items: center; }
+.chat-item.active { background: var(--surface); outline: 1px solid var(--border); }
+.chat-open {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.chat-open:hover { background: var(--surface); }
+.chat-delete {
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+.chat-delete:hover { color: var(--bad-text); }
+.sidebar-note { margin: 0; color: var(--muted); font-size: 12px; }
+
 .chat {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   height: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
   padding: 16px;
+}
+
+@media (max-width: 720px) {
+  .agent { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .sidebar { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--border); }
 }
 
 .chat-header h1 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
@@ -109,15 +165,17 @@ table.matches { border-collapse: collapse; width: 100%; background: var(--surfac
 .pill.disabled { background: var(--off-bg); color: var(--off-text); }
 
 .composer { display: flex; gap: 8px; margin-top: 12px; }
-.composer input {
+.composer textarea {
   flex: 1;
+  resize: vertical;
+  min-height: 42px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   font: inherit;
 }
-.composer input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.composer textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 .composer button {
   padding: 0 20px;
   border: 0;
@@ -141,16 +199,22 @@ table.matches { border-collapse: collapse; width: 100%; background: var(--surfac
 .composer .upload.disabled { opacity: 0.5; cursor: default; pointer-events: none; }
 .hint { margin-top: 8px !important; color: var(--muted); font-size: 13px; }
 .hint a, .bubble a { color: var(--accent); }
-.download {
-  margin-top: 8px;
+/* A link styled as a button. The .answer a prefix outranks the generic ".answer a" link colour,
+   which otherwise makes the text the same blue as the background. */
+.download,
+.answer a.download {
+  display: inline-block;
+  margin-top: 10px;
   padding: 6px 14px;
   border: 0;
   background: var(--accent);
   color: #ffffff;
   font: inherit;
   font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
 }
+.answer a.download:hover { filter: brightness(1.1); }
 .counts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
 /* Settings page */
@@ -197,3 +261,42 @@ table.matches { border-collapse: collapse; width: 100%; background: var(--surfac
 .result.ok { color: var(--ok-text); }
 .result.warn { color: var(--warn-text); }
 .result.error { color: var(--bad-text); }
+
+.composer button.secondary { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+
+/* Agent turns */
+.status-line { margin-top: 8px; color: var(--muted); font-style: italic; }
+.plain { white-space: pre-wrap; }
+.attachment {
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 12px;
+}
+.message.assistant .bubble { width: 100%; }
+.tools { margin: 0 0 6px; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
+.tool::before { content: "\2699\FE0E  "; }
+.tool.running { font-style: italic; }
+.tool.failed { color: var(--bad-text); }
+.reasoning { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
+.reasoning summary { cursor: pointer; }
+.reasoning-text { white-space: pre-wrap; margin-top: 4px; max-height: 240px; overflow-y: auto; }
+
+.answer { overflow-wrap: anywhere; }
+.answer > :first-child { margin-top: 0; }
+.answer > :last-child { margin-bottom: 0; }
+.answer p, .answer ul, .answer ol { margin: 0 0 8px; }
+.answer h1, .answer h2, .answer h3, .answer h4 { margin: 12px 0 6px; font-size: 15px; }
+.answer code {
+  padding: 0 3px;
+  background: var(--surface);
+  font-family: "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.answer pre { overflow-x: auto; padding: 8px; background: var(--surface); }
+.answer pre code { padding: 0; }
+.answer table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0 0 8px; }
+.answer th, .answer td { padding: 4px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.answer th { background: var(--surface); font-weight: 600; }
+.answer a { color: var(--accent); }
+.message.notice .bubble { color: var(--muted); font-style: italic; }

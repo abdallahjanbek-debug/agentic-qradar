@@ -51,8 +51,9 @@ def create_app():
     # Import additional endpoints.
     # For more information see:
     #   https://flask.palletsprojects.com/en/1.1.x/tutorial/views
-    from . import views, admin_views
+    from . import views, admin_views, chat_views
     qflask.register_blueprint(views.viewsbp)
     qflask.register_blueprint(admin_views.adminbp)
+    qflask.register_blueprint(chat_views.chatbp)
 
     return qflask

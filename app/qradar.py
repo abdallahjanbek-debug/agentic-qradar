@@ -181,6 +181,8 @@ def _normalize(raw, types, protocols, collectors):
         'protocol': protocols.get(raw.get('protocol_type_id'), ''),
         'identifier': identifier or '',
         'search_values': [str(p['value']) for p in params if p.get('value') not in (None, '')],
+        'parameters': [{'name': p.get('name'), 'value': str(p['value'])} for p in params
+                       if p.get('value') not in (None, '')],
         'enabled': bool(raw.get('enabled')),
         'internal': bool(raw.get('internal')),
         'last_event_time': raw.get('last_event_time') or 0,

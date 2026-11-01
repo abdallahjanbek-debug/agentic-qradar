@@ -8,7 +8,9 @@
   var cards = Array.prototype.slice.call(document.querySelectorAll('[data-setting]'));
 
   function call(method, url, body) {
-    var init = { method: method, headers: {} };
+    // Saving checks the credential against QRadar or Anthropic, which can exceed QRadar.fetch's
+    // default 10 s timeout.
+    var init = { method: method, headers: {}, timeout: 60000 };
     if (body !== undefined) {
       init.headers['Content-Type'] = 'application/json';
       init.body = JSON.stringify(body);

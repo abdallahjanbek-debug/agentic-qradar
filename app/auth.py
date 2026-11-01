@@ -10,7 +10,8 @@ import os
 import threading
 import time
 
-from flask import jsonify, render_template, request
+import requests
+from flask import g, jsonify, render_template, request
 from qpylib import qpylib
 
 from . import qradar
@@ -19,7 +20,7 @@ NOT_ADMIN = 'AI Admin is available to QRadar administrators only.'
 CACHE_SECONDS = 60
 
 _lock = threading.Lock()
-_verdicts = {}  # sha256(credential) -> (expires_at, is_admin)
+_verdicts = {}  # sha256(credential) -> (expires_at, is_admin, owner)
 
 
 def _credential():
@@ -27,8 +28,25 @@ def _credential():
     return request.cookies.get('SEC') or request.headers.get('SEC')
 
 
+def _owner(sec, key):
+    """The QRadar username behind this credential. Authorized-service tokens have no user, so
+    they get a stable pseudonym instead."""
+    if sec:
+        try:
+            resp = qpylib.REST('GET', 'api/config/access/users', version=qradar.api_version(),
+                               params={'current_user': 'true', 'fields': 'username'},
+                               headers={'SEC': sec})
+            users = resp.json() if resp.status_code == 200 else []
+            if users and users[0].get('username'):
+                return users[0]['username']
+        except (requests.RequestException, ValueError) as exc:
+            qpylib.log('Current user lookup failed: {0!r}'.format(exc), level='WARNING')
+    return 'token-' + key[:12]
+
+
 def is_admin():
-    """Whether the caller's own QRadar credential has the Admin capability."""
+    """Whether the caller's own QRadar credential has the Admin capability. Also sets
+    flask.g.qradar_user to the caller's username."""
     sdk = os.environ.get('QRADAR_APPFW_SDK', '').lower() == 'true'
     if os.environ.get('SEC_ADMIN_TOKEN') and not sdk:
         # qpylib would send SEC_ADMIN_TOKEN instead of the caller's credential, so the check
@@ -42,13 +60,16 @@ def is_admin():
     now = time.time()
     with _lock:
         cached = _verdicts.get(key)
-        if cached and cached[0] > now:
-            return cached[1]
-    verdict = qradar.session_is_admin(sec)
-    with _lock:
-        for stale in [k for k, (expires, _) in _verdicts.items() if expires <= now]:
-            del _verdicts[stale]
-        _verdicts[key] = (now + CACHE_SECONDS, verdict)
+    if cached and cached[0] > now:
+        verdict, owner = cached[1], cached[2]
+    else:
+        verdict = qradar.session_is_admin(sec)
+        owner = _owner(sec, key) if verdict else None
+        with _lock:
+            for stale in [k for k, entry in _verdicts.items() if entry[0] <= now]:
+                del _verdicts[stale]
+            _verdicts[key] = (now + CACHE_SECONDS, verdict, owner)
+    g.qradar_user = owner
     return verdict
 
 

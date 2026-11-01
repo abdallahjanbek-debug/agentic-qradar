@@ -7,42 +7,60 @@
     <link href="static/app.css" rel="stylesheet">
   </head>
   <body>
-    <main class="chat">
-      <header class="chat-header">
-        <h1>AI Admin</h1>
-        <p>An AI assistant for administering QRadar.</p>
-      </header>
+    <div class="agent">
+      <aside class="sidebar" aria-label="Chats">
+        <button id="new-chat" type="button" class="new-chat">+ New chat</button>
+        <ul id="chat-list" class="chat-list"></ul>
+        <p class="sidebar-note">Chats are saved for you only and deleted after 90 days without use.</p>
+      </aside>
 
-      <section id="messages" class="messages" aria-live="polite">
-        <div class="message assistant">
-          <div class="bubble">
-            <p>Hi. Ask me about your QRadar deployment. To start with, I can check whether a log source is connected:</p>
-            <div class="suggestions">
-              <button type="button" class="suggestion">Is 10.0.0.1 connected?</button>
-              <button type="button" class="suggestion">Is Office 365 sending events?</button>
-              <button type="button" class="suggestion">Is fw01.example.local sending logs?</button>
+      <main class="chat">
+        <header class="chat-header">
+          <h1 id="chat-title">AI Admin</h1>
+          <p>An AI agent for administering QRadar. It can look things up but never changes QRadar.</p>
+        </header>
+
+        <section id="messages" class="messages" aria-live="polite"></section>
+
+        <template id="welcome-template">
+          <div class="message assistant welcome">
+            <div class="bubble">
+              <p>Hi. I'm an AI agent for your QRadar deployment. Ask me anything about it; to start with,
+                I can review your log source integration. For example:</p>
+              <div class="suggestions">
+                <button type="button" class="suggestion">Review my log source integration</button>
+                <button type="button" class="suggestion">Which log sources stopped sending events?</button>
+                <button type="button" class="suggestion">Show log sources that never received events</button>
+                <button type="button" class="suggestion">Is 10.0.0.1 connected?</button>
+              </div>
+              <p class="hint">
+                To check a long list of devices, upload an Excel file with IPs and/or hostnames in columns
+                A and B (<a href="api/bulk_template" download>download a template</a>). You get a results
+                workbook, and I can discuss the results with you.
+              </p>
             </div>
-            <p class="hint">
-              To check many at once, upload an Excel file with IPs and/or hostnames in columns A
-              and B (<a href="api/bulk_template" download>download a template</a>). You get back
-              a workbook listing connected and not connected log sources.
-            </p>
           </div>
-        </div>
-      </section>
+        </template>
 
-      <form id="ask-form" class="composer" autocomplete="off">
-        <input id="question" name="question" type="text" maxlength="2000"
-               placeholder="Ask about your QRadar deployment" aria-label="Your question" required>
-        <button id="send" type="submit">Ask</button>
-        <label id="upload-label" class="upload" title="Check a list of IPs and hostnames from an Excel file">
-          Upload Excel
-          <input id="upload" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
-        </label>
-      </form>
-    </main>
+        <div id="status" class="status-line" hidden></div>
+
+        <form id="ask-form" class="composer" autocomplete="off">
+          <textarea id="question" name="question" rows="2" maxlength="20000"
+                    placeholder="Ask about your QRadar deployment (Enter to send, Shift+Enter for a new line)"
+                    aria-label="Your message" required></textarea>
+          <button id="send" type="submit">Send</button>
+          <button id="stop" type="button" class="secondary" hidden>Stop</button>
+          <label id="upload-label" class="upload" title="Check a list of IPs and hostnames from an Excel file">
+            Upload Excel
+            <input id="upload" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+          </label>
+        </form>
+      </main>
+    </div>
 
     <script src="static/qjslib/qappfw.min.js"></script>
+    <script src="static/vendor/marked-12.0.2.min.js"></script>
+    <script src="static/vendor/purify-3.1.6.min.js"></script>
     <script src="static/chat.js"></script>
   </body>
 </html>

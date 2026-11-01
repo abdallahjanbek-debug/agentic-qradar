@@ -1,4 +1,4 @@
-"""Anthropic API access. For now this only checks that a saved key works."""
+"""Anthropic API access: the shared client and the saved-key check."""
 
 from qpylib import qpylib
 
@@ -16,11 +16,13 @@ class ClaudeError(Exception):
         self.rejected = rejected
 
 
-def _client(api_key):
-    # Imported here so the SDK only loads when it's needed. The SDK honours the container's
-    # https_proxy / no_proxy variables, which QRadar sets from its auto-update proxy.
+def client(api_key, timeout=20.0, max_retries=1):
+    """(anthropic module, client). The SDK honours the container's https_proxy / no_proxy
+    variables, which QRadar sets from its auto-update proxy settings."""
+    # Imported here so the SDK only loads when it's needed.
     import anthropic
-    return anthropic, anthropic.Anthropic(api_key=api_key, timeout=20.0, max_retries=1)
+    return anthropic, anthropic.Anthropic(api_key=api_key, timeout=timeout,
+                                          max_retries=max_retries)
 
 
 def check_key(api_key):
@@ -28,9 +30,9 @@ def check_key(api_key):
 
     Retrieving a model is free, so this costs no tokens.
     """
-    anthropic, client = _client(api_key)
+    anthropic, api = client(api_key)
     try:
-        return client.models.retrieve(MODEL).display_name
+        return api.models.retrieve(MODEL).display_name
     except anthropic.AuthenticationError as exc:
         raise ClaudeError('Anthropic rejected this API key.', rejected=True) from exc
     except anthropic.PermissionDeniedError as exc:
