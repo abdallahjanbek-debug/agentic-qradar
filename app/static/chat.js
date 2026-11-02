@@ -132,6 +132,42 @@
       answer: answer, text: '', thinking: '' };
   }
 
+  // An event search: the AQL that ran and its results, collapsed by default.
+  function searchBlock(search) {
+    var box = el('details', 'search');
+    if (search.error) {
+      box.appendChild(el('summary', 'search-failed', 'Event search failed'));
+      box.appendChild(el('p', null, search.error));
+      return box;
+    }
+    var count = search.rows.length;
+    box.appendChild(el('summary', null, 'Event search: ' + count + ' event' +
+      (count === 1 ? '' : 's') + (count >= search.limited_to ? ' (capped at ' +
+      search.limited_to + ')' : '')));
+    box.appendChild(el('pre', 'aql', search.aql));
+    if (!count) return box;
+    var table = el('table', 'matches');
+    var head = el('tr');
+    search.columns.forEach(function (c) { head.appendChild(el('th', null, c)); });
+    table.appendChild(el('thead')).appendChild(head);
+    var body = table.appendChild(el('tbody'));
+    search.rows.forEach(function (row) {
+      var tr = el('tr');
+      search.columns.forEach(function (c) {
+        var value = row[c] === null || row[c] === undefined ? '' : String(row[c]);
+        var td = el('td', c === 'Payload' ? 'payload' : null,
+          value.length > 160 ? value.slice(0, 160) + '…' : value);
+        if (value.length > 160) td.title = value;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    var wrap = el('div', 'table-wrap');
+    wrap.appendChild(table);
+    box.appendChild(wrap);
+    return box;
+  }
+
   function addTool(turn, label, done) {
     var item = el('li', done ? 'tool done' : 'tool running', label);
     turn.tools.appendChild(item);
@@ -180,6 +216,9 @@
       } else {
         var turn = assistantBubble();
         item.tools.forEach(function (label) { addTool(turn, label, true); });
+        (item.searches || []).forEach(function (search) {
+          turn.tools.parentNode.insertBefore(searchBlock(search), turn.answer);
+        });
         turn.answer.innerHTML = markdown(item.text);
       }
     });

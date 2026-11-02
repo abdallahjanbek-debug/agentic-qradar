@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS uploads (
     workbook BLOB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS uploads_conversation ON uploads (conversation_id, after_messages);
+CREATE TABLE IF NOT EXISTS search_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created INTEGER NOT NULL,
+    owner TEXT,
+    aql TEXT,
+    request TEXT NOT NULL,
+    status TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL
+);
 '''
 
 _initialized = False
@@ -206,3 +216,14 @@ def prune():
     cutoff = _now() - RETENTION_DAYS * 86400000
     with _db() as conn:
         conn.execute('DELETE FROM conversations WHERE updated < ?', (cutoff,))
+
+
+def record_search(owner, aql, request, status, row_count, duration_ms):
+    """Audit trail of every event search the agent attempted (kept like the chats)."""
+    with _db() as conn:
+        conn.execute('INSERT INTO search_audit (created, owner, aql, request, status, row_count, '
+                     'duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                     (_now(), owner, aql, json.dumps(request, default=str), status, row_count,
+                      duration_ms))
+        conn.execute('DELETE FROM search_audit WHERE created < ?',
+                     (_now() - RETENTION_DAYS * 86400000,))

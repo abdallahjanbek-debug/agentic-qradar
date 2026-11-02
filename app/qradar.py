@@ -93,24 +93,30 @@ def api_version():
     return _api_version
 
 
-def _get_page(path, fields, token, start, end):
+def call(method, path, params=None, headers=None, token=None, ok=(200, 206)):
+    """One QRadar API call with the saved token. Raises QRadarError unless the status is in ok."""
     try:
-        resp = qpylib.REST('GET', path, version=api_version(), params={'fields': fields},
-                           headers={'SEC': token, 'Range': 'items={0}-{1}'.format(start, end)})
+        resp = qpylib.REST(method, path, version=api_version(), params=params,
+                           headers=dict(headers or {}, SEC=token or _token()))
     except requests.RequestException as exc:
-        qpylib.log('GET {0} failed: {1}'.format(path, exc), level='ERROR')
+        qpylib.log('{0} {1} failed: {2}'.format(method, path, exc), level='ERROR')
         raise QRadarError('Could not reach the QRadar API.') from exc
+    if resp.status_code in ok:
+        return resp
     if resp.status_code == 401:
         raise QRadarError('QRadar rejected the API token (HTTP 401). An admin can replace it in '
                           'Admin > AI Admin Settings.')
     if resp.status_code == 403:
         raise QRadarError("The API token's user isn't allowed to do this "
                           '(it needs the Admin capability).')
-    if resp.status_code not in (200, 206):
-        qpylib.log('GET {0} returned {1}: {2}'.format(path, resp.status_code, resp.text[:500]),
-                   level='ERROR')
-        raise QRadarError('QRadar returned HTTP {0} for {1}.'.format(resp.status_code, path))
-    return resp
+    qpylib.log('{0} {1} returned {2}: {3}'.format(method, path, resp.status_code,
+                                                  resp.text[:500]), level='ERROR')
+    raise QRadarError('QRadar returned HTTP {0} for {1}.'.format(resp.status_code, path))
+
+
+def _get_page(path, fields, token, start, end):
+    return call('GET', path, params={'fields': fields}, token=token,
+                headers={'Range': 'items={0}-{1}'.format(start, end)})
 
 
 def _get_all(path, fields):
@@ -204,6 +210,13 @@ def log_sources():
         collectors = _names(EVENT_COLLECTORS)
         raw = _get_all(LOG_SOURCES, LOG_SOURCE_FIELDS)
         _cache['sources'] = [_normalize(r, types, protocols, collectors) for r in raw]
+        _cache['types'] = types
         _cache['at'] = time.time()
         qpylib.log('Loaded {0} log sources'.format(len(raw)), level='DEBUG')
         return _cache['sources']
+
+
+def log_source_types():
+    """id -> name of every log source type, from the same cache as log_sources()."""
+    log_sources()
+    return dict(_cache.get('types') or {})

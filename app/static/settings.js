@@ -98,8 +98,62 @@
     });
   });
 
+  var limits = document.getElementById('search-limits');
+  var windowInput = document.getElementById('window-days');
+
+  function showConfig(config) {
+    var spec = config && config.aql_max_window_days;
+    if (!spec) return;
+    windowInput.value = spec.value;
+    windowInput.min = spec.min;
+    windowInput.max = spec.max;
+  }
+
+  document.getElementById('window-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var value = parseInt(windowInput.value, 10);
+    showResult(limits, 'pending', 'Saving…');
+    call('PUT', 'api/config/aql_max_window_days', { value: value })
+      .then(function (data) {
+        showConfig(data.config);
+        showResult(limits, 'ok', 'Saved. Searches may now cover up to ' + value + ' days.');
+      })
+      .catch(function (err) { showResult(limits, 'error', err.message); });
+  });
+
+  var modelCard = document.getElementById('model-card');
+  var modelSelect = document.getElementById('model-select');
+
+  function loadModels() {
+    return call('GET', 'api/models').then(function (data) {
+      modelSelect.textContent = '';
+      data.models.forEach(function (m) {
+        var option = document.createElement('option');
+        option.value = m.id;
+        option.textContent = m.name + ' ($' + m.price_in + ' / $' + m.price_out + ') - ' + m.note +
+          (m.fallback ? '' : ' No refusal fallback.') +
+          (m.available === false ? ' [not available to this key]' : '');
+        option.disabled = m.available === false;
+        option.selected = m.id === data.current;
+        modelSelect.appendChild(option);
+      });
+      if (data.note) showResult(modelCard, 'warn', data.note);
+    }).catch(function (err) { showResult(modelCard, 'error', err.message); });
+  }
+
+  document.getElementById('model-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    showResult(modelCard, 'pending', 'Checking and saving…');
+    call('PUT', 'api/config/claude_model', { value: modelSelect.value })
+      .then(function (data) { showResult(modelCard, 'ok', data.message); })
+      .catch(function (err) { showResult(modelCard, 'error', err.message); })
+      .then(loadModels);
+  });
+
+  loadModels();
+
   call('GET', 'api/settings')
-    .then(function (data) { showAll(data.settings); })
+    .then(function (data) { showAll(data.settings); showConfig(data.config); })
     .catch(function (err) {
       cards.forEach(function (card) {
         card.querySelector('.status').textContent = '';

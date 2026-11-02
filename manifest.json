@@ -1,7 +1,7 @@
 {
   "name": "AI Admin",
   "description": "AI agent for QRadar administrators, powered by Claude. Read-only.",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "uuid": "f781e08d-13c2-471d-94da-9608d21b540e",
   "image": "qradar-app-base:4.0.2",
   "use_qradar_csrf": "true",

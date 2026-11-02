@@ -48,6 +48,33 @@
         </form>
         <p class="result" aria-live="polite"></p>
       </section>
+      <section class="card" id="model-card">
+        <h2>Claude model</h2>
+        <p class="help">
+          The model the agent uses for every answer. Prices are per million input / output tokens.
+          Changing it applies to the next message, including in existing chats.
+        </p>
+        <form class="secret-form" id="model-form">
+          <select id="model-select" aria-label="Claude model"></select>
+          <button type="submit">Save</button>
+        </form>
+        <p class="result" aria-live="polite"></p>
+      </section>
+
+      <section class="card" id="search-limits">
+        <h2>Event searches</h2>
+        <p class="help">
+          The agent can search events (Ariel) with filters on source IP, destination IP, log source,
+          log source type, username, event name, QRadar event ID and QID only. Every search returns
+          at most 50 events and must include a filter. Longer time ranges scan more data.
+        </p>
+        <form class="secret-form" id="window-form">
+          <label for="window-days">Maximum time range (days)</label>
+          <input id="window-days" type="number" min="1" max="30" step="1" required>
+          <button type="submit">Save</button>
+        </form>
+        <p class="result" aria-live="polite"></p>
+      </section>
     </main>
 
     <script src="static/qjslib/qappfw.min.js"></script>

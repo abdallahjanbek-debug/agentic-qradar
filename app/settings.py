@@ -13,6 +13,8 @@ import time
 from qpylib import qpylib
 from qpylib.encdec import Encryption, EncryptionError
 
+from . import claude
+
 QRADAR_TOKEN = 'qradar_token'
 ANTHROPIC_KEY = 'anthropic_api_key'
 NAMES = (QRADAR_TOKEN, ANTHROPIC_KEY)
@@ -75,3 +77,63 @@ def summary():
                    'hint': meta.get(name, {}).get('hint'),
                    'updated': meta.get(name, {}).get('updated')}
             for name in NAMES}
+
+
+# Non-secret configuration, stored as JSON in the app's store. Each setting is either a whole
+# number in a range or one of a fixed set of choices.
+CONFIG = {
+    'aql_max_window_days': {'default': 7, 'min': 1, 'max': 30,
+                            'label': 'Maximum time range of an event search, in days'},
+    'claude_model': {'default': claude.DEFAULT_MODEL, 'choices': list(claude.MODELS),
+                     'label': 'Claude model'},
+}
+
+
+def _config_path():
+    return qpylib.get_store_path('config.json')
+
+
+def _read_config():
+    try:
+        with open(_config_path()) as config_file:
+            return json.load(config_file)
+    except (OSError, ValueError):
+        return {}
+
+
+def _valid(spec, value):
+    if 'choices' in spec:
+        return value in spec['choices']
+    return (isinstance(value, int) and not isinstance(value, bool) and
+            spec['min'] <= value <= spec['max'])
+
+
+def get_config(name):
+    spec = CONFIG[name]
+    value = _read_config().get(name, spec['default'])
+    return value if _valid(spec, value) else spec['default']
+
+
+def set_config(name, value):
+    """Raises ValueError for an unknown name or an invalid value."""
+    if name not in CONFIG:
+        raise ValueError('Unknown setting.')
+    spec = CONFIG[name]
+    if not _valid(spec, value):
+        if 'choices' in spec:
+            raise ValueError('{0} must be one of: {1}.'.format(spec['label'],
+                                                              ', '.join(spec['choices'])))
+        raise ValueError('{0} must be a whole number from {1} to {2}.'.format(
+            spec['label'], spec['min'], spec['max']))
+    with _lock:
+        config = _read_config()
+        config[name] = value
+        tmp = _config_path() + '.tmp'
+        with open(tmp, 'w') as config_file:
+            json.dump(config, config_file)
+        os.replace(tmp, _config_path())
+    qpylib.log('Config {0} set to {1}'.format(name, value), level='INFO')
+
+
+def config_summary():
+    return {name: dict(spec, value=get_config(name)) for name, spec in CONFIG.items()}

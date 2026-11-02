@@ -24,7 +24,7 @@ def _check(name, value):
         return True, 'The token works: it can read QRadar configuration ({0} log sources).'.format(
             count)
     try:
-        model = claude.check_key(value)
+        model = claude.check_key(value, settings.get_config('claude_model'))
     except claude.ClaudeError as exc:
         if exc.rejected:
             raise ValueError(str(exc)) from exc
@@ -41,7 +41,7 @@ def settings_page():
 @adminbp.route('/api/settings')
 @admin_required
 def get_settings():
-    return jsonify(settings=settings.summary())
+    return jsonify(settings=settings.summary(), config=settings.config_summary())
 
 
 @adminbp.route('/api/settings/<name>', methods=['PUT'])
@@ -88,3 +88,45 @@ def delete_setting(name):
     if name == settings.QRADAR_TOKEN:
         qradar.reset()
     return jsonify(message='{0} removed.'.format(LABELS[name]), settings=settings.summary())
+
+
+@adminbp.route('/api/models')
+@admin_required
+def list_models():
+    """The model catalog, marking which models the saved Anthropic key can use."""
+    api_key = settings.get(settings.ANTHROPIC_KEY)
+    available, note = None, None
+    if api_key:
+        try:
+            available = set(claude.available_models(api_key))
+        except claude.ClaudeError as exc:
+            note = 'Could not check which models the key can use: {0}'.format(exc)
+    else:
+        note = 'Save an Anthropic API key to see which models it can use.'
+    models = [{'id': model_id, 'name': info['name'], 'price_in': info['price'][0],
+               'price_out': info['price'][1], 'fallback': info['fallback'], 'note': info['note'],
+               'available': None if available is None else model_id in available}
+              for model_id, info in claude.MODELS.items()]
+    return jsonify(models=models, current=settings.get_config('claude_model'), note=note)
+
+
+@adminbp.route('/api/config/<name>', methods=['PUT'])
+@admin_required
+def save_config(name):
+    value = (request.get_json(silent=True) or {}).get('value')
+    message = 'Saved.'
+    if name == 'claude_model' and value in claude.MODELS:
+        api_key = settings.get(settings.ANTHROPIC_KEY)
+        if api_key:
+            try:
+                message = 'Saved. The agent now uses {0}.'.format(claude.check_key(api_key,
+                                                                                   value))
+            except claude.ClaudeError as exc:
+                if exc.rejected:
+                    return jsonify(error='Not saved. {0}'.format(exc)), 400
+                message = 'Saved, but untested: {0}'.format(exc)
+    try:
+        settings.set_config(name, value)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(message=message, config=settings.config_summary())

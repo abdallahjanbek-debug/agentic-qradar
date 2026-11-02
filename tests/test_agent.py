@@ -28,7 +28,7 @@ OWNER = 'admin'
 
 def message(content, stop_reason):
     return BetaMessage.model_validate({
-        'id': 'msg_test', 'type': 'message', 'role': 'assistant', 'model': claude.MODEL,
+        'id': 'msg_test', 'type': 'message', 'role': 'assistant', 'model': claude.DEFAULT_MODEL,
         'content': content, 'stop_reason': stop_reason, 'stop_sequence': None,
         'usage': {'input_tokens': 10, 'output_tokens': 5}})
 
@@ -151,6 +151,20 @@ class AgentLoop(AgentTestCase):
                          'fw01 is silent.')
         self.assertEqual(kinds[-1], 'done')
 
+    def test_model_setting(self):
+        answer = message([{'type': 'text', 'text': 'ok'}], 'end_turn')
+        original = settings.get_config
+        try:
+            settings.get_config = lambda name: ('claude-haiku-5-5' if name == 'claude_model'
+                                                else original(name))
+            _, api, _ = self.run_agent([(text_events('ok'), answer)])
+        finally:
+            settings.get_config = original
+        request = api.requests[0]
+        self.assertEqual(request['model'], 'claude-haiku-5-5')
+        self.assertNotIn('fallbacks', request)
+        self.assertEqual(request['betas'], ['thinking-binding-controls-2026-08-01'])
+
     def test_refusal_closes_the_turn(self):
         chat, _, events = self.run_agent([(text_events('partial'), message([], 'refusal'))])
         stored = chatstore.messages(chat['id'])
@@ -243,7 +257,7 @@ class Errors(AgentTestCase):
         self.assertIn({'type': 'error', 'message': expected}, run.since(0)[0])
         items = agent.transcript(chatstore.messages(chat['id']))
         self.assertEqual(items[-1], {'role': 'assistant', 'text': expected, 'tools': [],
-                                     'kind': 'error'})
+                                     'kind': 'error', 'searches': []})
 
 
 class Store(AgentTestCase):
@@ -304,8 +318,32 @@ class Store(AgentTestCase):
         self.assertEqual(agent.transcript(msgs), [
             {'role': 'user', 'text': 'review', 'attachment': None},
             {'role': 'assistant', 'text': 'All good.', 'tools': ['Reviewing log source health'],
-             'kind': None},
+             'kind': None, 'searches': []},
         ])
+
+    def test_transcript_shows_event_searches(self):
+        result = json.dumps({'aql': 'SELECT ...', 'columns': ['Event Name'],
+                             'rows': [{'Event Name': 'Logon'}], 'limited_to': 50})
+        msgs = [
+            {'role': 'user', 'content': [{'type': 'text', 'text': 'logons for bob'}]},
+            {'role': 'assistant', 'content': [
+                {'type': 'tool_use', 'id': 't1', 'name': 'search_events',
+                 'input': {'filters': [{'field': 'username', 'operator': 'equals',
+                                        'values': ['bob']}],
+                           'time_range': {'last_minutes': 60}}},
+                {'type': 'tool_use', 'id': 't2', 'name': 'search_events', 'input': {}}]},
+            {'role': 'user', 'content': [
+                {'type': 'tool_result', 'tool_use_id': 't1', 'content': result},
+                {'type': 'tool_result', 'tool_use_id': 't2', 'content': 'At least one filter',
+                 'is_error': True}]},
+            {'role': 'assistant', 'content': [{'type': 'text', 'text': 'One logon.'}]},
+        ]
+        item = agent.transcript(msgs)[1]
+        self.assertEqual(item['tools'][0], 'Searching events (username equals bob)')
+        self.assertEqual(item['searches'], [
+            {'aql': 'SELECT ...', 'columns': ['Event Name'], 'rows': [{'Event Name': 'Logon'}],
+             'limited_to': 50},
+            {'error': 'At least one filter'}])
 
 
 class Tools(AgentTestCase):

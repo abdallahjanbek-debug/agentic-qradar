@@ -11,7 +11,7 @@ import json
 import os
 import time
 
-from . import logsources, qradar
+from . import aql_search, logsources, qradar
 
 MAX_RESULTS = 200
 MAX_TARGETS = 500
@@ -178,6 +178,10 @@ def log_source_overview(args):
     }
 
 
+def search_events(args, owner=None, should_stop=lambda: False):
+    return aql_search.search(args, owner, should_stop)
+
+
 TOOLS = [
     {
         'name': 'log_source_overview',
@@ -246,6 +250,59 @@ TOOLS = [
     },
 ]
 
+TOOLS.append({
+    'name': 'search_events',
+    'description': (
+        'Search QRadar events (Ariel). You do not write AQL: describe the search with filters '
+        'and a time range, and the app builds, validates and runs the AQL, returning the AQL it '
+        'ran and up to 50 events, newest first by default, with the default Log Activity columns '
+        '(Event Name, Log Source, Event Count, Time, Low Level Category, Source IP/Port, '
+        'Destination IP/Port, Username, Magnitude) and the Payload. Rules: filters may only use '
+        'source_ip, destination_ip, log_source, log_source_type, username, event_name, '
+        'qradar_event_id (QRadar\'s event ID, the device event key QRadar maps to a QID, e.g. '
+        '"4625" or "Microsoft-Windows-Security-Auditing_4625") and qid. At least one filter must '
+        'include something (equals, in, in_cidr or contains); filters are ANDed. Operators: IPs '
+        'equals, not_equals, in, in_cidr; log_source, log_source_type, username and event_name '
+        'equals (case-insensitive) or contains; qradar_event_id and qid equals or in. Names of '
+        'log sources, log source types and events are resolved to IDs for you. The time range is '
+        'required and limited to the configured maximum (days); prefer the shortest range that '
+        'answers the question. Results are capped at 50 rows, so to count, say that the result '
+        'was capped rather than presenting 50 as a total.'),
+    'input_schema': {
+        'type': 'object',
+        'properties': {
+            'filters': {
+                'type': 'array', 'minItems': 1, 'maxItems': 10,
+                'items': {
+                    'type': 'object',
+                    'properties': {
+                        'field': {'type': 'string', 'enum': list(aql_search.ALLOWED_FILTER_FIELDS)},
+                        'operator': {'type': 'string', 'enum': ['equals', 'not_equals', 'in',
+                                                                'in_cidr', 'contains']},
+                        'values': {'type': 'array', 'items': {'type': 'string'},
+                                   'minItems': 1, 'maxItems': aql_search.MAX_VALUES_PER_FILTER},
+                    },
+                    'required': ['field', 'operator', 'values'],
+                    'additionalProperties': False,
+                },
+            },
+            'time_range': {
+                'type': 'object',
+                'description': ('Either {"last_minutes": n} or {"start": "YYYY-MM-DD HH:MM", '
+                                '"end": "YYYY-MM-DD HH:MM"} in console time.'),
+                'properties': {'last_minutes': {'type': 'integer', 'minimum': 1},
+                               'start': {'type': 'string'}, 'end': {'type': 'string'}},
+                'additionalProperties': False,
+            },
+            'order': {'type': 'string', 'enum': ['newest_first', 'oldest_first']},
+        },
+        'required': ['filters', 'time_range'],
+        'additionalProperties': False,
+    },
+    'handler': search_events,
+    'needs_context': True,
+})
+
 _BY_NAME = {tool['name']: tool for tool in TOOLS}
 
 LABELS = {
@@ -253,6 +310,7 @@ LABELS = {
     'search_log_sources': 'Searching log sources',
     'get_log_source': 'Reading log source details',
     'check_targets': 'Checking targets',
+    'search_events': 'Searching events',
 }
 
 
@@ -262,16 +320,20 @@ def definitions():
              'input_schema': t['input_schema'], 'eager_input_streaming': True} for t in TOOLS]
 
 
-def run(name, args):
-    """(result_text, is_error). Never raises for bad input or QRadar failures."""
+def run(name, args, owner=None, should_stop=lambda: False):
+    """(result_text, is_error). Never raises for bad input or QRadar failures. owner is the
+    QRadar user the agent works for, recorded by tools that audit their use; should_stop()
+    turns True when the user presses Stop, for tools that run long."""
     tool = _BY_NAME.get(name)
     if tool is None:
         return 'Unknown tool {0}.'.format(name), True
     if not isinstance(args, dict):
         return 'Tool input must be a JSON object.', True
     try:
-        return json.dumps(tool['handler'](args), default=str), False
-    except ToolError as exc:
+        result = (tool['handler'](args, owner, should_stop) if tool.get('needs_context')
+                  else tool['handler'](args))
+        return json.dumps(result, default=str), False
+    except (ToolError, aql_search.SearchError) as exc:
         return str(exc), True
     except qradar.QRadarError as exc:
         return 'QRadar error: {0}'.format(exc), True
@@ -284,6 +346,11 @@ def summarize_call(name, args):
         return label
     if name == 'check_targets' and isinstance(args.get('targets'), list):
         return '{0} ({1})'.format(label, len(args['targets']))
+    if name == 'search_events' and isinstance(args.get('filters'), list):
+        parts = ['{0} {1} {2}'.format(f.get('field'), f.get('operator'),
+                                      ', '.join(str(v) for v in f.get('values') or []))
+                 for f in args['filters'] if isinstance(f, dict)]
+        return '{0} ({1})'.format(label, '; '.join(parts))
     details = ', '.join('{0}: {1}'.format(k, v) for k, v in args.items()
                         if k in ('query', 'states', 'type_contains', 'collector_contains', 'id'))
     return '{0} ({1})'.format(label, details) if details else label

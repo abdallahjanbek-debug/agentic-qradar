@@ -300,3 +300,29 @@ table.matches { border-collapse: collapse; width: 100%; background: var(--surfac
 .answer th { background: var(--surface); font-weight: 600; }
 .answer a { color: var(--accent); }
 .message.notice .bubble { color: var(--muted); font-style: italic; }
+
+/* Event searches inside an answer */
+.search { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--border); background: var(--surface); }
+.search summary { cursor: pointer; font-weight: 600; font-size: 12px; }
+.search-failed { color: var(--bad-text); }
+.search .aql {
+  margin: 6px 0;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  font-family: "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.search td { white-space: nowrap; }
+.search td.payload { white-space: normal; min-width: 320px; font-family: "IBM Plex Mono", Menlo, Consolas, monospace; font-size: 11px; }
+#window-form label { align-self: center; }
+#window-form input { flex: 0 0 90px; }
+#model-form select {
+  flex: 1 1 320px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
