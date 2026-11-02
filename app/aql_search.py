@@ -3,7 +3,8 @@
 The agent never writes AQL text. It sends a structured request (filters on allowed fields and
 a time range) and this module builds the query, so by construction:
 - filters use only ALLOWED_FILTER_FIELDS, with at least one inclusion filter;
-- the columns are QRadar's default Log Activity columns plus the payload;
+- the columns are QRadar's default Log Activity columns plus the payload, or, when grouping,
+  the grouped allowed fields with their event count and first/last seen times;
 - every query has LIMIT 50 and a time range of at most the configured maximum.
 QRadar's own validator then checks the generated AQL before it runs, and a running search is
 cancelled when it exceeds SEARCH_TIMEOUT_SECONDS or the user presses Stop. Every search is
@@ -55,6 +56,24 @@ ALLOWED_FILTER_FIELDS = {
     'qid': ('equals', 'not_equals', 'in'),
 }
 INCLUDE_OPERATORS = ('equals', 'in', 'in_cidr', 'contains')
+
+# Grouping uses the same allowed fields: field -> (GROUP BY expression, shown expression, label).
+GROUP_FIELDS = {
+    'source_ip': ('sourceip', 'sourceip', 'Source IP'),
+    'destination_ip': ('destinationip', 'destinationip', 'Destination IP'),
+    'log_source': ('logsourceid', 'LOGSOURCENAME(logsourceid)', 'Log Source'),
+    'log_source_type': ('devicetype', 'LOGSOURCETYPENAME(devicetype)', 'Log Source Type'),
+    'username': ('username', 'username', 'Username'),
+    'event_name': ('qid', 'QIDNAME(qid)', 'Event Name'),
+    'qradar_event_id': ('qideventid', 'qideventid', 'QRadar Event ID'),
+    'qid': ('qid', 'qid', 'QID'),
+}
+MAX_GROUP_FIELDS = 3
+GROUP_TOTALS = [
+    ('SUM(eventcount)', 'Event Count'),
+    ("DATEFORMAT(MIN(starttime), 'yyyy-MM-dd HH:mm:ss')", 'First Seen'),
+    ("DATEFORMAT(MAX(starttime), 'yyyy-MM-dd HH:mm:ss')", 'Last Seen'),
+]
 # Characters that could end a string literal or confuse the AQL parser.
 FORBIDDEN_CHARACTERS = set('\'"\\\r\n\t\x00')
 
@@ -115,6 +134,10 @@ def _match_names(names_by_id, values, operator, field):
     return sorted(ids)
 
 
+class TooManyEventTypes(SearchError):
+    """An event name matches more event types than fit in an indexed qid IN (...) list."""
+
+
 def _event_qids(values, operator):
     """QIDs whose event name equals or contains the value, from QRadar's QID records."""
     qids = set()
@@ -128,9 +151,29 @@ def _event_qids(values, operator):
     if not qids:
         raise SearchError('event_name: no QRadar event is named {0}.'.format(', '.join(values)))
     if len(qids) > MAX_RESOLVED_IDS:
-        raise SearchError('event_name: more than {0} event types match; be more specific.'
-                          .format(MAX_RESOLVED_IDS))
+        raise TooManyEventTypes('event_name: more than {0} event types match.'
+                                .format(MAX_RESOLVED_IDS))
     return sorted(qids)
+
+
+def _event_condition(values, operator, negate, narrowed):
+    """Event names become an indexed qid list. A name matching too many event types is matched
+    by name instead (QIDNAME ILIKE), but only when another inclusion filter narrows the search
+    first; on its own it would scan every event in the time range."""
+    try:
+        return _in_list('qid', _event_qids(values, operator), negate)
+    except TooManyEventTypes as exc:
+        if not narrowed:
+            raise SearchError(
+                '{0} Add a log_source, log_source_type, username or IP filter to narrow the '
+                'search (then broad event names are allowed), use a more specific event name, '
+                'or filter on qradar_event_id or qid instead.'.format(exc)) from exc
+    texts = [_text(v, 'event_name') for v in values]
+    pattern = '%{0}%' if operator == 'contains' else '{0}'
+    joined = (' AND ' if negate else ' OR ').join(
+        "QIDNAME(qid) {0} '{1}'".format('NOT ILIKE' if negate else 'ILIKE', pattern.format(t))
+        for t in texts)
+    return '(' + joined + ')'
 
 
 def _in_list(column, items, negate, quote=False):
@@ -140,7 +183,8 @@ def _in_list(column, items, negate, quote=False):
     return '{0}{1} IN ({2})'.format('NOT ' if negate else '', column, rendered)
 
 
-def _condition(spec):
+def _condition(spec, narrowed=False):
+    """AQL for one filter. narrowed: another inclusion filter on an indexed field is present."""
     if not isinstance(spec, dict):
         raise SearchError('Each filter must be an object with field, operator and values.')
     field, operator, values = spec.get('field'), spec.get('operator'), spec.get('values')
@@ -179,7 +223,7 @@ def _condition(spec):
             for t in texts)
         return '(' + joined + ')'
     if field == 'event_name':
-        return _in_list('qid', _event_qids(values, operator), negate)
+        return _event_condition(values, operator, negate, narrowed)
     if field == 'qradar_event_id':
         return _in_list('qideventid', [_text(v, field) for v in values], negate, quote=True)
     return _in_list('qid', _ints(values, field), negate)
@@ -214,8 +258,22 @@ def _time_clause(time_range, max_days):
                                        int(end.timestamp() * 1000)), minutes
 
 
+def _grouping(group_by):
+    """(select columns, GROUP BY clause) for the requested grouping, or (None, None)."""
+    if group_by is None or group_by == []:
+        return None, None
+    if (not isinstance(group_by, list) or len(group_by) > MAX_GROUP_FIELDS or
+            any(field not in GROUP_FIELDS for field in group_by)):
+        raise SearchError('group_by takes 1 to {0} of: {1}.'.format(
+            MAX_GROUP_FIELDS, ', '.join(GROUP_FIELDS)))
+    fields = list(dict.fromkeys(group_by))
+    columns = [(GROUP_FIELDS[f][1], GROUP_FIELDS[f][2]) for f in fields] + GROUP_TOTALS
+    keys = list(dict.fromkeys(GROUP_FIELDS[f][0] for f in fields))
+    return columns, 'GROUP BY ' + ', '.join(keys)
+
+
 def build(request):
-    """(aql, minutes) from the agent's structured request. Raises SearchError."""
+    """(aql, minutes, columns) from the agent's structured request. Raises SearchError."""
     if not isinstance(request, dict):
         raise SearchError('The search request must be an object.')
     filters = request.get('filters')
@@ -224,14 +282,25 @@ def build(request):
     if not any(isinstance(f, dict) and f.get('operator') in INCLUDE_OPERATORS for f in filters):
         raise SearchError('At least one filter must include something (equals, in, in_cidr or '
                           'contains); a search with only exclusions matches almost everything.')
-    where = ' AND '.join(_condition(f) for f in filters)
+    includes = [f for f in filters if isinstance(f, dict) and f.get('operator') in INCLUDE_OPERATORS]
+    where = ' AND '.join(
+        _condition(f, narrowed=any(o is not f and o.get('field') != 'event_name'
+                                   for o in includes))
+        for f in filters)
     order = 'ASC' if request.get('order') == 'oldest_first' else 'DESC'
     time_clause, minutes = _time_clause(request.get('time_range'),
                                         settings.get_config('aql_max_window_days'))
-    select = ', '.join('{0} AS "{1}"'.format(expr, name) for expr, name in COLUMNS)
-    aql = 'SELECT {0} FROM events WHERE {1} ORDER BY starttime {2} LIMIT {3} {4}'.format(
-        select, where, order, RESULT_LIMIT, time_clause)
-    return aql, minutes
+    columns, group_clause = _grouping(request.get('group_by'))
+    if columns:
+        # Groups with the most events first.
+        tail = '{0} ORDER BY "Event Count" DESC'.format(group_clause)
+    else:
+        columns = COLUMNS
+        tail = 'ORDER BY starttime {0}'.format(order)
+    select = ', '.join('{0} AS "{1}"'.format(expr, name) for expr, name in columns)
+    aql = 'SELECT {0} FROM events WHERE {1} {2} LIMIT {3} {4}'.format(
+        select, where, tail, RESULT_LIMIT, time_clause)
+    return aql, minutes, [name for _, name in columns]
 
 
 # ---- Running it ----------------------------------------------------------------------------
@@ -288,7 +357,7 @@ def search(request, owner, should_stop=lambda: False):
     status = 'rejected'
     rows = []
     try:
-        aql, minutes = build(request)
+        aql, minutes, columns = build(request)
         errors = validate(aql)
         if errors:
             raise SearchError('QRadar rejected the query: ' + '; '.join(errors))
@@ -305,8 +374,13 @@ def search(request, owner, should_stop=lambda: False):
         chatstore.record_search(owner, aql, request, status, len(rows),
                                 int((time.time() - started) * 1000))
     for row in rows:
+        # QRadar returns SUM() as a double; show whole counts as whole numbers.
+        count = row.get('Event Count')
+        if isinstance(count, float) and count.is_integer():
+            row['Event Count'] = int(count)
         payload = row.get('Payload')
         if isinstance(payload, str) and len(payload) > PAYLOAD_CHARS_FOR_CLAUDE:
             row['Payload'] = payload[:PAYLOAD_CHARS_FOR_CLAUDE] + ' …[truncated]'
     return {'aql': aql, 'time_range_minutes': minutes, 'row_count': len(rows),
-            'limited_to': RESULT_LIMIT, 'columns': [name for _, name in COLUMNS], 'rows': rows}
+            'limited_to': RESULT_LIMIT, 'grouped': bool(request.get('group_by')),
+            'columns': columns, 'rows': rows}

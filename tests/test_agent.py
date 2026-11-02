@@ -364,7 +364,7 @@ class Store(AgentTestCase):
         self.assertEqual(item['tools'][0], 'Searching events (username equals bob)')
         self.assertEqual(item['searches'], [
             {'aql': 'SELECT ...', 'columns': ['Event Name'], 'rows': [{'Event Name': 'Logon'}],
-             'limited_to': 50},
+             'limited_to': 50, 'grouped': False},
             {'error': 'At least one filter'}])
 
 

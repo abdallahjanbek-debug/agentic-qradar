@@ -31,7 +31,10 @@ class FakeQRadar:
     def __call__(self, method, path, params=None, headers=None, token=None, ok=(200, 206)):
         self.calls.append((method, path, params))
         if path == 'api/data_classification/qid_records':
-            body = [{'qid': 39750013}] if 'Logon' in params['filter'] else []
+            if 'broad' in params['filter']:
+                body = [{'qid': q} for q in range(1, aql_search.MAX_RESOLVED_IDS + 2)]
+            else:
+                body = [{'qid': 39750013}] if 'Logon' in params['filter'] else []
         elif path == 'api/ariel/validators/aql':
             body = {'error_messages': [{'message': m} for m in self.validator_errors]}
         elif path == 'api/ariel/searches' and method == 'POST':
@@ -67,14 +70,14 @@ class AqlTestCase(unittest.TestCase):
         self.tmp.cleanup()
 
     def where(self, *filters, time_range=None):
-        aql, _ = aql_search.build({'filters': list(filters),
+        aql, _, _ = aql_search.build({'filters': list(filters),
                                    'time_range': time_range or {'last_minutes': 60}})
         return aql.split(' WHERE ', 1)[1].split(' ORDER BY ', 1)[0]
 
 
 class Build(AqlTestCase):
     def test_shape(self):
-        aql, minutes = aql_search.build({
+        aql, minutes, columns = aql_search.build({
             'filters': [{'field': 'source_ip', 'operator': 'equals', 'values': ['10.0.0.1']}],
             'time_range': {'last_minutes': 90}})
         self.assertTrue(aql.startswith('SELECT QIDNAME(qid) AS "Event Name", '))
@@ -82,6 +85,8 @@ class Build(AqlTestCase):
         self.assertTrue(aql.endswith("WHERE sourceip = '10.0.0.1' ORDER BY starttime DESC "
                                      'LIMIT 50 LAST 90 MINUTES'))
         self.assertEqual(minutes, 90)
+        self.assertEqual(columns[0], 'Event Name')
+        self.assertEqual(columns[-1], 'Payload')
 
     def test_each_field(self):
         self.assertEqual(self.where({'field': 'destination_ip', 'operator': 'in_cidr',
@@ -110,11 +115,56 @@ class Build(AqlTestCase):
                          "qid = 5000012 AND (username NOT ILIKE 'system')")
 
     def test_start_stop_window(self):
-        aql, minutes = aql_search.build({
+        aql, minutes, _ = aql_search.build({
             'filters': [{'field': 'qid', 'operator': 'equals', 'values': ['1']}],
             'time_range': {'start': '2026-11-01 08:00', 'end': '2026-11-02 08:00'}})
         self.assertRegex(aql, r'START \d{13} STOP \d{13}$')
         self.assertEqual(minutes, 1440)
+
+    def test_broad_event_name_needs_another_filter(self):
+        broad = {'field': 'event_name', 'operator': 'contains', 'values': ['broad']}
+        with self.assertRaises(aql_search.SearchError) as caught:
+            self.where(broad)
+        self.assertIn('Add a log_source, log_source_type, username or IP filter', str(caught.exception))
+        self.assertEqual(self.where({'field': 'log_source_type', 'operator': 'contains',
+                                     'values': ['windows']}, broad),
+                         "devicetype = 12 AND (QIDNAME(qid) ILIKE '%broad%')")
+        # Another event-name filter doesn't count as narrowing.
+        with self.assertRaises(aql_search.SearchError):
+            self.where(broad, {'field': 'event_name', 'operator': 'contains', 'values': ['Logon']})
+        # Narrow names still use the indexed qid list.
+        self.assertEqual(self.where({'field': 'username', 'operator': 'equals', 'values': ['bob']},
+                                    {'field': 'event_name', 'operator': 'contains',
+                                     'values': ['Logon']}),
+                         "(username ILIKE 'bob') AND qid = 39750013")
+
+    def test_group_by(self):
+        aql, _, columns = aql_search.build({
+            'filters': [{'field': 'qradar_event_id', 'operator': 'in', 'values': ['4624', '4625']}],
+            'time_range': {'last_minutes': 2880}, 'group_by': ['username', 'event_name']})
+        self.assertEqual(aql, (
+            'SELECT username AS "Username", QIDNAME(qid) AS "Event Name", SUM(eventcount) AS '
+            '"Event Count", DATEFORMAT(MIN(starttime), \'yyyy-MM-dd HH:mm:ss\') AS "First Seen", '
+            'DATEFORMAT(MAX(starttime), \'yyyy-MM-dd HH:mm:ss\') AS "Last Seen" FROM events '
+            "WHERE qideventid IN ('4624', '4625') GROUP BY username, qid "
+            'ORDER BY "Event Count" DESC LIMIT 50 LAST 2880 MINUTES'))
+        self.assertEqual(columns, ['Username', 'Event Name', 'Event Count', 'First Seen',
+                                   'Last Seen'])
+        aql, _, _ = aql_search.build({
+            'filters': [{'field': 'qid', 'operator': 'equals', 'values': ['1']}],
+            'time_range': {'last_minutes': 5}, 'group_by': ['event_name', 'qid']})
+        self.assertIn('GROUP BY qid ORDER BY', aql)  # same key only once
+
+    def test_group_by_rejections(self):
+        base = {'filters': [{'field': 'qid', 'operator': 'equals', 'values': ['1']}],
+                'time_range': {'last_minutes': 5}}
+        for group_by in (['payload'], ['username', 'qid', 'source_ip', 'destination_ip'],
+                         'username'):
+            with self.assertRaises(aql_search.SearchError):
+                aql_search.build(dict(base, group_by=group_by))
+        with self.assertRaises(aql_search.SearchError):  # grouping still needs a filter
+            aql_search.build({'filters': [], 'time_range': {'last_minutes': 5},
+                              'group_by': ['username']})
 
     def test_rejections(self):
         ip = {'field': 'source_ip', 'operator': 'equals', 'values': ['10.0.0.1']}

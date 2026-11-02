@@ -163,7 +163,8 @@
       return box;
     }
     var count = search.rows.length;
-    box.appendChild(el('summary', null, 'Event search: ' + count + ' event' +
+    var noun = search.grouped ? 'group' : 'event';
+    box.appendChild(el('summary', null, 'Event search: ' + count + ' ' + noun +
       (count === 1 ? '' : 's') + (count >= search.limited_to ? ' (capped at ' +
       search.limited_to + ')' : '')));
     box.appendChild(el('pre', 'aql', search.aql));

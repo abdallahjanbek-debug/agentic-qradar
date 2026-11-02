@@ -253,11 +253,15 @@ TOOLS = [
 TOOLS.append({
     'name': 'search_events',
     'description': (
-        'Search QRadar events (Ariel). You do not write AQL: describe the search with filters '
-        'and a time range, and the app builds, validates and runs the AQL, returning the AQL it '
-        'ran and up to 50 events, newest first by default, with the default Log Activity columns '
-        '(Event Name, Log Source, Event Count, Time, Low Level Category, Source IP/Port, '
-        'Destination IP/Port, Username, Magnitude) and the Payload. Rules: filters may only use '
+        'Search QRadar events (Ariel). You do not write AQL: describe the search with filters, '
+        'a time range and optionally group_by, and the app builds, validates and runs the AQL. '
+        'Without group_by it returns up to 50 events, newest first by default, with the default '
+        'Log Activity columns (Event Name, Log Source, Event Count, Time, Low Level Category, '
+        'Source IP/Port, Destination IP/Port, Username, Magnitude) and the Payload. With '
+        'group_by (1 to 3 of the filter fields) it counts instead: one row per distinct '
+        'combination with Event Count, First Seen and Last Seen, largest first, up to 50 groups. '
+        'Use group_by for "per user", "per source", "top N" and "how many" questions rather than '
+        'running one search per value. Rules: filters may only use '
         'source_ip, destination_ip, log_source, log_source_type, username, event_name, '
         'qradar_event_id (QRadar\'s event ID, the device event key QRadar maps to a QID, e.g. '
         '"4625" or "Microsoft-Windows-Security-Auditing_4625") and qid. At least one filter must '
@@ -266,8 +270,8 @@ TOOLS.append({
         'equals (case-insensitive) or contains; qradar_event_id and qid equals or in. Names of '
         'log sources, log source types and events are resolved to IDs for you. The time range is '
         'required and limited to the configured maximum (days); prefer the shortest range that '
-        'answers the question. Results are capped at 50 rows, so to count, say that the result '
-        'was capped rather than presenting 50 as a total.'),
+        'answers the question. Results are capped at 50 rows (or 50 groups); when a result has '
+        '50 rows, say there may be more rather than presenting it as complete.'),
     'input_schema': {
         'type': 'object',
         'properties': {
@@ -294,7 +298,10 @@ TOOLS.append({
                                'start': {'type': 'string'}, 'end': {'type': 'string'}},
                 'additionalProperties': False,
             },
-            'order': {'type': 'string', 'enum': ['newest_first', 'oldest_first']},
+            'group_by': {'type': 'array', 'maxItems': aql_search.MAX_GROUP_FIELDS,
+                         'items': {'type': 'string', 'enum': list(aql_search.GROUP_FIELDS)}},
+            'order': {'type': 'string', 'enum': ['newest_first', 'oldest_first'],
+                      'description': 'Raw events only; groups are always largest first.'},
         },
         'required': ['filters', 'time_range'],
         'additionalProperties': False,
@@ -350,6 +357,8 @@ def summarize_call(name, args):
         parts = ['{0} {1} {2}'.format(f.get('field'), f.get('operator'),
                                       ', '.join(str(v) for v in f.get('values') or []))
                  for f in args['filters'] if isinstance(f, dict)]
+        if isinstance(args.get('group_by'), list) and args['group_by']:
+            parts.append('grouped by ' + ', '.join(str(g) for g in args['group_by']))
         return '{0} ({1})'.format(label, '; '.join(parts))
     details = ', '.join('{0}: {1}'.format(k, v) for k, v in args.items()
                         if k in ('query', 'states', 'type_contains', 'collector_contains', 'id'))
