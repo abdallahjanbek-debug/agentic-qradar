@@ -165,6 +165,25 @@ class AgentLoop(AgentTestCase):
         self.assertNotIn('fallbacks', request)
         self.assertEqual(request['betas'], ['thinking-binding-controls-2026-08-01'])
 
+    def test_chat_model_overrides_default_and_is_recorded(self):
+        answer = message([{'type': 'text', 'text': 'ok'}], 'end_turn')
+        api = FakeAPI([(text_events('ok'), answer)])
+        original = claude.client
+        claude.client = lambda key, **kw: (FakeAnthropic, api)
+        try:
+            chat = chatstore.create(OWNER, model='claude-fable-5-1')
+            run = agent.start(chat, OWNER, 'hi')
+            while not run.done:
+                time.sleep(0.01)
+        finally:
+            claude.client = original
+        self.assertEqual(api.requests[0]['model'], 'claude-fable-5-1')
+        stored = chatstore.messages(chat['id'])
+        self.assertEqual(stored[1]['usage']['model'], claude.DEFAULT_MODEL)  # what answered
+        self.assertEqual(agent.transcript(stored)[1]['model'], 'Claude Opus 5.5')
+        chatstore.set_model(chat['id'], 'retired-model')
+        self.assertEqual(agent.model_for(chatstore.get(chat['id'], OWNER)), 'claude-opus-5-5')
+
     def test_refusal_closes_the_turn(self):
         chat, _, events = self.run_agent([(text_events('partial'), message([], 'refusal'))])
         stored = chatstore.messages(chat['id'])
@@ -257,7 +276,7 @@ class Errors(AgentTestCase):
         self.assertIn({'type': 'error', 'message': expected}, run.since(0)[0])
         items = agent.transcript(chatstore.messages(chat['id']))
         self.assertEqual(items[-1], {'role': 'assistant', 'text': expected, 'tools': [],
-                                     'kind': 'error', 'searches': []})
+                                     'kind': 'error', 'searches': [], 'model': None})
 
 
 class Store(AgentTestCase):
@@ -296,6 +315,9 @@ class Store(AgentTestCase):
         old.commit()
         old.close()
         self.assertEqual(chatstore.messages('c1')[0]['kind'], None)
+        self.assertIsNone(chatstore.get('c1', 'admin')['model'])
+        chatstore.set_model('c1', 'claude-sonnet-5-5')
+        self.assertEqual(chatstore.get('c1', 'admin')['model'], 'claude-sonnet-5-5')
         chatstore.append('c1', 'assistant', [{'type': 'text', 'text': 'x'}], kind='error')
         self.assertEqual(chatstore.messages('c1')[1]['kind'], 'error')
     def test_owner_isolation_and_delete(self):
@@ -318,7 +340,7 @@ class Store(AgentTestCase):
         self.assertEqual(agent.transcript(msgs), [
             {'role': 'user', 'text': 'review', 'attachment': None},
             {'role': 'assistant', 'text': 'All good.', 'tools': ['Reviewing log source health'],
-             'kind': None, 'searches': []},
+             'kind': None, 'searches': [], 'model': None},
         ])
 
     def test_transcript_shows_event_searches(self):

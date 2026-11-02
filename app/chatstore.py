@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     title TEXT NOT NULL,
     created INTEGER NOT NULL,
     updated INTEGER NOT NULL,
-    pending_context TEXT
+    pending_context TEXT,
+    model TEXT
 );
 CREATE INDEX IF NOT EXISTS conversations_owner ON conversations (owner, updated);
 CREATE TABLE IF NOT EXISTS messages (
@@ -82,9 +83,11 @@ def _connect():
     if not _initialized:
         conn.execute('PRAGMA journal_mode = WAL')
         conn.executescript(_SCHEMA)
-        # Databases created by 0.4.0 lack messages.kind.
+        # Add columns that databases from earlier versions lack.
         if 'kind' not in {r['name'] for r in conn.execute('PRAGMA table_info(messages)')}:
             conn.execute('ALTER TABLE messages ADD COLUMN kind TEXT')
+        if 'model' not in {r['name'] for r in conn.execute('PRAGMA table_info(conversations)')}:
+            conn.execute('ALTER TABLE conversations ADD COLUMN model TEXT')
         _initialized = True
     return conn
 
@@ -100,13 +103,19 @@ def _db():
         conn.close()
 
 
-def create(owner, title='New chat'):
+def create(owner, title='New chat', model=None):
     conversation_id = uuid.uuid4().hex
     now = _now()
     with _db() as conn:
-        conn.execute('INSERT INTO conversations (id, owner, title, created, updated) '
-                     'VALUES (?, ?, ?, ?, ?)', (conversation_id, owner, title, now, now))
+        conn.execute('INSERT INTO conversations (id, owner, title, created, updated, model) '
+                     'VALUES (?, ?, ?, ?, ?, ?)', (conversation_id, owner, title, now, now, model))
     return get(conversation_id, owner)
+
+
+def set_model(conversation_id, model):
+    """The Claude model this chat uses from its next message on."""
+    with _db() as conn:
+        conn.execute('UPDATE conversations SET model = ? WHERE id = ?', (model, conversation_id))
 
 
 def get(conversation_id, owner):

@@ -19,8 +19,9 @@
   var chatList = document.getElementById('chat-list');
   var chatTitle = document.getElementById('chat-title');
   var statusLine = document.getElementById('status');
+  var modelPicker = document.getElementById('model-picker');
 
-  var state = { chatId: null, runId: null, busy: false };
+  var state = { chatId: null, runId: null, busy: false, defaultModel: null };
 
   // ---- Markdown: Claude's answers are rendered, then sanitized. Images are forbidden so an
   // answer can never make the browser fetch a URL (which could leak data).
@@ -92,6 +93,7 @@
     sendButton.hidden = busy;
     stopButton.hidden = !busy;
     upload.disabled = busy;
+    modelPicker.disabled = busy;
     uploadLabel.classList.toggle('disabled', busy);
     if (!busy) statusLine.hidden = true;
   }
@@ -132,6 +134,26 @@
       answer: answer, text: '', thinking: '' };
   }
 
+  // The same search in QRadar's Log Activity tab. A plain click switches the QRadar tab (as
+  // QRadar.openEventSearch does); Ctrl/middle-click opens the real URL in a new browser tab.
+  function logActivityLink(aql) {
+    var path = 'do/ariel/arielSearch?appName=EventViewer&pageId=EventList&dispatch=performSearch' +
+      "&values['timeRangeType']=aqlTime&values['searchMode']=AQL&values['aql']=" +
+      encodeURIComponent(aql);
+    var link = el('a', 'log-activity', 'Open in Log Activity');
+    link.href = window.location.origin + '/console/' + path;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.addEventListener('click', function (event) {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+      if (qradar && window.top && typeof window.top.setActiveTab === 'function') {
+        event.preventDefault();
+        qradar.openEventSearch(aql, false);
+      }
+    });
+    return link;
+  }
+
   // An event search: the AQL that ran and its results, collapsed by default.
   function searchBlock(search) {
     var box = el('details', 'search');
@@ -145,7 +167,10 @@
       (count === 1 ? '' : 's') + (count >= search.limited_to ? ' (capped at ' +
       search.limited_to + ')' : '')));
     box.appendChild(el('pre', 'aql', search.aql));
-    if (!count) return box;
+    var wrap = el('div', 'search-wrap');
+    wrap.appendChild(box);
+    wrap.appendChild(logActivityLink(search.aql));
+    if (!count) return wrap;
     var table = el('table', 'matches');
     var head = el('tr');
     search.columns.forEach(function (c) { head.appendChild(el('th', null, c)); });
@@ -162,10 +187,10 @@
       });
       body.appendChild(tr);
     });
-    var wrap = el('div', 'table-wrap');
-    wrap.appendChild(table);
-    box.appendChild(wrap);
-    return box;
+    var tableWrap = el('div', 'table-wrap');
+    tableWrap.appendChild(table);
+    box.appendChild(tableWrap);
+    return wrap;
   }
 
   function addTool(turn, label, done) {
@@ -220,6 +245,7 @@
           turn.tools.parentNode.insertBefore(searchBlock(search), turn.answer);
         });
         turn.answer.innerHTML = markdown(item.text);
+        if (item.model) turn.answer.parentNode.appendChild(el('div', 'answered-by', item.model));
       }
     });
     scrollDown();
@@ -256,6 +282,7 @@
 
   function newChat() {
     state.chatId = null;
+    if (state.defaultModel) modelPicker.value = state.defaultModel;
     chatTitle.textContent = 'AI Admin';
     showWelcome();
     refreshChats();
@@ -264,7 +291,7 @@
 
   function ensureChat() {
     if (state.chatId) return Promise.resolve(state.chatId);
-    return api('POST', 'api/chats').then(function (data) {
+    return api('POST', 'api/chats', { model: modelPicker.value || undefined }).then(function (data) {
       state.chatId = data.chat.id;
       messages.textContent = '';
       return state.chatId;
@@ -275,6 +302,7 @@
     return api('GET', 'api/chats/' + chatId).then(function (data) {
       state.chatId = chatId;
       chatTitle.textContent = data.chat.title;
+      if (data.chat.model) modelPicker.value = data.chat.model;
       renderItems(chatId, data.items);
       refreshChats();
       if (data.active_run && !state.busy) follow(data.active_run, assistantBubble());
@@ -388,6 +416,34 @@
     });
   }
 
+  // ---- Models: the picker lists the catalog; models the key can't use are disabled.
+  function loadModels() {
+    return api('GET', 'api/models').then(function (data) {
+      state.defaultModel = data.current;
+      var selected = modelPicker.value || data.current;
+      modelPicker.textContent = '';
+      data.models.forEach(function (m) {
+        var option = el('option', null, m.name);
+        option.value = m.id;
+        option.disabled = m.available === false;
+        modelPicker.appendChild(option);
+      });
+      modelPicker.value = selected;
+    }).catch(function () { modelPicker.disabled = true; });
+  }
+
+  modelPicker.addEventListener('change', function () {
+    if (!state.chatId) return;  // a new chat is created with the picked model
+    var label = modelPicker.options[modelPicker.selectedIndex].textContent;
+    api('PUT', 'api/chats/' + state.chatId + '/model', { model: modelPicker.value })
+      .then(function () {
+        statusLine.textContent = 'This chat now uses ' + label + ' from your next message.';
+        statusLine.hidden = false;
+        setTimeout(function () { if (!state.busy) statusLine.hidden = true; }, 4000);
+      })
+      .catch(function (err) { errorBubble(err.message); });
+  });
+
   // ---- Events
   form.addEventListener('submit', function (event) {
     event.preventDefault();
@@ -428,8 +484,8 @@
   var theme = new URLSearchParams(window.location.search).get('theme');
   if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
 
-  // Open the most recent chat, or show the welcome message.
-  api('GET', 'api/chats').then(function (data) {
+  // Load the models, then open the most recent chat or show the welcome message.
+  loadModels().then(function () { return api('GET', 'api/chats'); }).then(function (data) {
     renderChatList(data.chats);
     if (data.chats.length) openChat(data.chats[0].id); else showWelcome();
   }).catch(function (err) {

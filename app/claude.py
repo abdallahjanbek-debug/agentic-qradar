@@ -1,26 +1,23 @@
 """Anthropic API access: the model catalog, the shared client and the saved-key check."""
 
+import hashlib
+import threading
+import time
+
 from qpylib import qpylib
 
 DEFAULT_MODEL = 'claude-opus-5-5'
 
-# The models an admin can choose in AI Admin Settings. Only current models whose request
-# parameters the agent supports (adaptive thinking, effort) are listed. `fallback` marks models
-# that accept server-side refusal fallback (fallbacks="default"); prices are USD per million
-# input / output tokens.
+# The models an admin can choose. Only current models whose request parameters the agent
+# supports (adaptive thinking, effort) are listed. `fallback` marks models that accept
+# server-side refusal fallback (fallbacks="default").
 MODELS = {
-    'claude-opus-5-5': {'name': 'Claude Opus 5.5', 'price': (4, 20), 'fallback': True,
-                        'note': 'Default. Best balance of capability and cost.'},
-    'claude-fable-5-1': {'name': 'Claude Fable 5.1', 'price': (10, 50), 'fallback': True,
-                         'note': 'Most capable; slowest and most expensive.'},
-    'claude-sonnet-5-5': {'name': 'Claude Sonnet 5.5', 'price': (2, 10), 'fallback': True,
-                          'note': 'Faster and cheaper; good for everyday questions.'},
-    'claude-haiku-5-5': {'name': 'Claude Haiku 5.5', 'price': (0.10, 0.50), 'fallback': False,
-                         'note': 'Fastest and cheapest; simple lookups.'},
-    'claude-opus-5': {'name': 'Claude Opus 5', 'price': (5, 25), 'fallback': True,
-                      'note': 'Previous Opus.'},
-    'claude-sonnet-5': {'name': 'Claude Sonnet 5', 'price': (2, 10), 'fallback': False,
-                        'note': 'Previous Sonnet.'},
+    'claude-opus-5-5': {'name': 'Claude Opus 5.5', 'fallback': True},
+    'claude-fable-5-1': {'name': 'Claude Fable 5.1', 'fallback': True},
+    'claude-sonnet-5-5': {'name': 'Claude Sonnet 5.5', 'fallback': True},
+    'claude-haiku-5-5': {'name': 'Claude Haiku 5.5', 'fallback': False},
+    'claude-opus-5': {'name': 'Claude Opus 5', 'fallback': True},
+    'claude-sonnet-5': {'name': 'Claude Sonnet 5', 'fallback': False},
 }
 
 
@@ -72,8 +69,19 @@ def check_key(api_key, model=DEFAULT_MODEL):
                           'console has internet access or a proxy configured.') from exc
 
 
+_available = {}  # sha256(api key) -> (expires_at, [model ids])
+_available_lock = threading.Lock()
+AVAILABLE_CACHE_SECONDS = 600
+
+
 def available_models(api_key):
-    """Catalog models this key can use, via the free models list. Raises ClaudeError."""
+    """Catalog models this key can use, via the free models list (cached for 10 minutes, as
+    the chat page asks on every load). Raises ClaudeError."""
+    key = hashlib.sha256(api_key.encode()).hexdigest()
+    with _available_lock:
+        cached = _available.get(key)
+    if cached and cached[0] > time.time():
+        return cached[1]
     anthropic, api = client(api_key)
     try:
         ids = {m.id for m in api.models.list(limit=1000)}
@@ -83,4 +91,8 @@ def available_models(api_key):
         raise ClaudeError('Anthropic returned HTTP {0}.'.format(exc.status_code)) from exc
     except anthropic.APIConnectionError as exc:
         raise ClaudeError('Could not reach api.anthropic.com from the app.') from exc
-    return [model for model in MODELS if model in ids]
+    models = [model for model in MODELS if model in ids]
+    with _available_lock:
+        _available.clear()  # only the current key matters
+        _available[key] = (time.time() + AVAILABLE_CACHE_SECONDS, models)
+    return models

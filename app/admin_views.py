@@ -103,8 +103,7 @@ def list_models():
             note = 'Could not check which models the key can use: {0}'.format(exc)
     else:
         note = 'Save an Anthropic API key to see which models it can use.'
-    models = [{'id': model_id, 'name': info['name'], 'price_in': info['price'][0],
-               'price_out': info['price'][1], 'fallback': info['fallback'], 'note': info['note'],
+    models = [{'id': model_id, 'name': info['name'],
                'available': None if available is None else model_id in available}
               for model_id, info in claude.MODELS.items()]
     return jsonify(models=models, current=settings.get_config('claude_model'), note=note)
@@ -119,8 +118,8 @@ def save_config(name):
         api_key = settings.get(settings.ANTHROPIC_KEY)
         if api_key:
             try:
-                message = 'Saved. The agent now uses {0}.'.format(claude.check_key(api_key,
-                                                                                   value))
+                message = 'Saved. New chats now start with {0}.'.format(
+                    claude.check_key(api_key, value))
             except claude.ClaudeError as exc:
                 if exc.rejected:
                     return jsonify(error='Not saved. {0}'.format(exc)), 400

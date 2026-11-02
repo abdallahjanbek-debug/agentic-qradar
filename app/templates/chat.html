@@ -16,7 +16,13 @@
 
       <main class="chat">
         <header class="chat-header">
-          <h1 id="chat-title">AI Admin</h1>
+          <div class="chat-header-row">
+            <h1 id="chat-title">AI Admin</h1>
+            <label class="model-picker" title="The Claude model for this chat; a change applies from your next message">
+              <span>Model</span>
+              <select id="model-picker" aria-label="Claude model for this chat"></select>
+            </label>
+          </div>
           <p>An AI agent for administering QRadar. It can look things up but never changes QRadar.</p>
         </header>
 

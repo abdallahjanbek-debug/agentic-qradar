@@ -6,7 +6,7 @@ import time
 from flask import Blueprint, g, jsonify, request, send_file
 from qpylib import qpylib
 
-from . import agent, bulk, chatstore, qradar
+from . import agent, bulk, chatstore, claude, qradar
 from .auth import admin_required
 
 # pylint: disable=invalid-name
@@ -34,7 +34,10 @@ def list_chats():
 @chatbp.route('/api/chats', methods=['POST'])
 @admin_required
 def create_chat():
-    chat = chatstore.create(g.qradar_user)
+    model = (request.get_json(silent=True) or {}).get('model')
+    if model is not None and model not in claude.MODELS:
+        return jsonify(error='Unknown model.'), 400
+    chat = chatstore.create(g.qradar_user, model=model)
     return jsonify(chat={k: chat[k] for k in ('id', 'title', 'created', 'updated')}), 201
 
 
@@ -46,11 +49,25 @@ def get_chat(chat_id):
         return error
     run = agent.active_run(chat_id)
     pending = chat['pending_context']
-    return jsonify(chat={k: chat[k] for k in ('id', 'title', 'created', 'updated')},
+    return jsonify(chat=dict({k: chat[k] for k in ('id', 'title', 'created', 'updated')},
+                             model=agent.model_for(chat)),
                    items=agent.transcript(chatstore.messages(chat_id),
                                           chatstore.uploads(chat_id)),
                    active_run=run.id if run else None,
                    pending_attachment=bool(pending))
+
+
+@chatbp.route('/api/chats/<chat_id>/model', methods=['PUT'])
+@admin_required
+def set_chat_model(chat_id):
+    chat, error = _own_chat(chat_id)
+    if error:
+        return error
+    model = (request.get_json(silent=True) or {}).get('model')
+    if model not in claude.MODELS:
+        return jsonify(error='Unknown model.'), 400
+    chatstore.set_model(chat['id'], model)
+    return jsonify(model=model)
 
 
 @chatbp.route('/api/chats/<chat_id>', methods=['DELETE'])

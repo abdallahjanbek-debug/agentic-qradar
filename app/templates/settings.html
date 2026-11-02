@@ -49,13 +49,13 @@
         <p class="result" aria-live="polite"></p>
       </section>
       <section class="card" id="model-card">
-        <h2>Claude model</h2>
+        <h2>Default Claude model</h2>
         <p class="help">
-          The model the agent uses for every answer. Prices are per million input / output tokens.
-          Changing it applies to the next message, including in existing chats.
+          The model new chats start with. Each chat can switch model from the picker at the top
+          of the chat.
         </p>
         <form class="secret-form" id="model-form">
-          <select id="model-select" aria-label="Claude model"></select>
+          <select id="model-select" aria-label="Default Claude model"></select>
           <button type="submit">Save</button>
         </form>
         <p class="result" aria-live="polite"></p>

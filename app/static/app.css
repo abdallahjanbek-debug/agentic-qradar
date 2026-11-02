@@ -302,7 +302,8 @@ table.matches { border-collapse: collapse; width: 100%; background: var(--surfac
 .message.notice .bubble { color: var(--muted); font-style: italic; }
 
 /* Event searches inside an answer */
-.search { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--border); background: var(--surface); }
+.search-wrap { margin: 0 0 8px; }
+.search { margin: 0; padding: 6px 8px; border: 1px solid var(--border); background: var(--surface); }
 .search summary { cursor: pointer; font-weight: 600; font-size: 12px; }
 .search-failed { color: var(--bad-text); }
 .search .aql {
@@ -326,3 +327,17 @@ table.matches { border-collapse: collapse; width: 100%; background: var(--surfac
   color: var(--text);
   font: inherit;
 }
+
+/* Model picker and per-answer model label */
+.chat-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.model-picker { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.model-picker select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.answered-by { margin-top: 6px; color: var(--muted); font-size: 11px; }
+.log-activity { display: inline-block; margin: 4px 0 0; color: var(--accent); font-size: 12px; font-weight: 600; }

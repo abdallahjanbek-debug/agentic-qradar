@@ -73,10 +73,11 @@ class AgentError(Exception):
 
 
 class Run:
-    def __init__(self, conversation_id, owner):
+    def __init__(self, conversation_id, owner, model):
         self.id = uuid.uuid4().hex
         self.conversation_id = conversation_id
         self.owner = owner
+        self.model = model
         self.created = time.time()
         self.cancelled = False
         self.done = False
@@ -115,6 +116,12 @@ def active_run(conversation_id):
                      if r.conversation_id == conversation_id and not r.done), None)
 
 
+def model_for(conversation):
+    """The chat's own model if it is still in the catalog, else the configured default."""
+    model = conversation.get('model')
+    return model if model in claude.MODELS else settings.get_config('claude_model')
+
+
 def start(conversation, owner, user_text):
     """Append the user's message and start a run. Raises AgentError."""
     _forget_old_runs()
@@ -133,7 +140,7 @@ def start(conversation, owner, user_text):
     if conversation['title'] == 'New chat':
         chatstore.set_title(conversation['id'], user_text)
 
-    run = Run(conversation['id'], owner)
+    run = Run(conversation['id'], owner, model_for(conversation))
     with _runs_lock:
         _runs[run.id] = run
     threading.Thread(target=_work, args=(run, api_key), daemon=True,
@@ -169,7 +176,7 @@ def _fail(run, text):
 
 def _loop(run, api_key):
     anthropic, api = claude.client(api_key, timeout=600.0, max_retries=2)
-    model = settings.get_config('claude_model')
+    model = run.model
     deadline = time.time() + RUN_TIMEOUT_SECONDS
     for _ in range(MAX_TOOL_ROUNDS):
         if run.cancelled:
@@ -202,8 +209,9 @@ def _loop(run, api_key):
             return
 
         content = json.loads(message.to_json())['content']
+        # The model that answered (a refusal fallback can differ from the one requested).
         chatstore.append(run.conversation_id, 'assistant', content,
-                         usage=json.loads(message.usage.to_json()))
+                         usage=dict(json.loads(message.usage.to_json()), model=message.model))
         tool_uses = [b for b in message.content if b.type == 'tool_use']
         if message.stop_reason == 'pause_turn':
             continue
@@ -352,10 +360,13 @@ def transcript(messages, uploads=()):
             continue
         if not items or items[-1]['role'] != 'assistant':
             items.append({'role': 'assistant', 'text': '', 'tools': [], 'kind': None,
-                          'searches': []})
+                          'searches': [], 'model': None})
         item = items[-1]
         if message.get('kind'):
             item['kind'] = message['kind']
+        answered_by = (message.get('usage') or {}).get('model')
+        if answered_by:
+            item['model'] = claude.MODELS.get(answered_by, {}).get('name', answered_by)
         for block in blocks:
             if block.get('type') == 'text' and block.get('text'):
                 item['text'] = (item['text'] + '\n\n' + block['text']).strip()

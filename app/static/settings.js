@@ -130,9 +130,7 @@
       data.models.forEach(function (m) {
         var option = document.createElement('option');
         option.value = m.id;
-        option.textContent = m.name + ' ($' + m.price_in + ' / $' + m.price_out + ') - ' + m.note +
-          (m.fallback ? '' : ' No refusal fallback.') +
-          (m.available === false ? ' [not available to this key]' : '');
+        option.textContent = m.name + (m.available === false ? ' (not available to this key)' : '');
         option.disabled = m.available === false;
         option.selected = m.id === data.current;
         modelSelect.appendChild(option);
