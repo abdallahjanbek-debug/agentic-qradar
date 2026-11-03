@@ -11,7 +11,7 @@ import json
 import os
 import time
 
-from . import aql_search, logsources, qradar
+from . import aql_search, health_metrics, logsources, qradar
 
 MAX_RESULTS = 200
 MAX_TARGETS = 500
@@ -310,6 +310,81 @@ TOOLS.append({
     'needs_context': True,
 })
 
+def query_health_metrics(args, owner=None, should_stop=lambda: False):
+    return health_metrics.query(args, owner, should_stop)
+
+
+_TEXT_FILTER = {
+    'type': 'object',
+    'properties': {'operator': {'type': 'string', 'enum': list(health_metrics.TEXT_OPERATORS)},
+                   'values': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1,
+                              'maxItems': health_metrics.MAX_VALUES}},
+    'required': ['operator', 'values'],
+    'additionalProperties': False,
+}
+
+TOOLS.append({
+    'name': 'query_health_metrics',
+    'description': (
+        'Query QRadar health metrics: the per-host measurements QRadar records every minute or '
+        'so (QID 94000001, Health Metrics log sources). Use this, not search_events, for disk '
+        'space, EPS, queues, CPU, memory and other system health questions. Each sample has a '
+        'Metric ID, an Element (partition, device or component), a Hostname (managed host) and '
+        'a Value. Common metrics: DiskUsage (fraction of a partition used, shown as %), '
+        'DiskSpaceUsed and DiskSpaceTotal (bytes, shown as GiB; Element is the mount point such '
+        'as /store or /), EventRate (EPS at ecs-ec-ingress), EventRateEC (EPS at ecs-ec), '
+        'EventRateEPMon (EPS at the event processor), FlowRate, '
+        'QueuedEventThrottleFilterDiskSize and IngressToEcDiskSize (events buffered to disk; '
+        'above 0 means backlog or license throttling), ParserQueueSize. Host memory: '
+        'SystemMemoryUsed (%), SystemPhysicalMemoryUsed and SystemPhysicalMemoryFree (GiB), '
+        'SystemSwapMemoryUsed (GiB). CPU: UserCpu, SystemCPU, IdleCpu (%), NumCpu. '
+        'HeapMemoryUsed and other per-process metrics average several QRadar processes '
+        'together, so do not present them as host memory. Results include a Unit column and '
+        'may include notes; follow them. If unsure of a name, use mode "list_metrics" first. '
+        'Modes: latest (default; '
+        'average over the last 15 minutes, 60 when DiskSpaceTotal is asked for: "what is it '
+        'now"), summary (min/avg/max over a time range), trend (hourly averages over a time '
+        'range), list_metrics (which metrics exist). A metrics filter is required except for '
+        'list_metrics. Optional filters: elements, hosts, source_ips (the reporting host IP). '
+        'Asking for DiskUsage, DiskSpaceUsed and DiskSpaceTotal together in latest mode returns '
+        'one row per host and partition with used GiB, total GiB and used %. Container storage '
+        '(/store/docker-data/..., overlay mounts) is included; set exclude_container_mounts '
+        'only when the user asks to leave it out. Time range: at most the configured maximum '
+        '(hours). Up to 500 rows; the app converts units, so use the values as shown.'),
+    'input_schema': {
+        'type': 'object',
+        'properties': {
+            'mode': {'type': 'string', 'enum': list(health_metrics.MODES)},
+            'metrics': _TEXT_FILTER,
+            'elements': _TEXT_FILTER,
+            'hosts': _TEXT_FILTER,
+            'source_ips': {
+                'type': 'object',
+                'properties': {'operator': {'type': 'string', 'enum': ['equals', 'in', 'in_cidr']},
+                               'values': {'type': 'array', 'items': {'type': 'string'},
+                                          'minItems': 1, 'maxItems': health_metrics.MAX_VALUES}},
+                'required': ['operator', 'values'],
+                'additionalProperties': False,
+            },
+            'group_by': {'type': 'array', 'items': {'type': 'string', 'enum': ['source_ip']},
+                         'maxItems': 1},
+            'exclude_container_mounts': {'type': 'boolean'},
+            'time_range': {
+                'type': 'object',
+                'description': ('Either {"last_minutes": n} or {"start": "YYYY-MM-DD HH:MM", '
+                                '"end": "YYYY-MM-DD HH:MM"} in console time. Required for '
+                                'summary and trend.'),
+                'properties': {'last_minutes': {'type': 'integer', 'minimum': 1},
+                               'start': {'type': 'string'}, 'end': {'type': 'string'}},
+                'additionalProperties': False,
+            },
+        },
+        'additionalProperties': False,
+    },
+    'handler': query_health_metrics,
+    'needs_context': True,
+})
+
 _BY_NAME = {tool['name']: tool for tool in TOOLS}
 
 LABELS = {
@@ -318,6 +393,7 @@ LABELS = {
     'get_log_source': 'Reading log source details',
     'check_targets': 'Checking targets',
     'search_events': 'Searching events',
+    'query_health_metrics': 'Querying health metrics',
 }
 
 
@@ -353,6 +429,16 @@ def summarize_call(name, args):
         return label
     if name == 'check_targets' and isinstance(args.get('targets'), list):
         return '{0} ({1})'.format(label, len(args['targets']))
+    if name == 'query_health_metrics':
+        parts = [str(args.get('mode', 'latest'))]
+        for key in ('metrics', 'elements', 'hosts', 'source_ips'):
+            spec = args.get(key)
+            if isinstance(spec, dict):
+                parts.append('{0} {1} {2}'.format(key, spec.get('operator'),
+                                                  ', '.join(str(v) for v in spec.get('values') or [])))
+        if args.get('exclude_container_mounts'):
+            parts.append('without container mounts')
+        return '{0} ({1})'.format(label, '; '.join(parts))
     if name == 'search_events' and isinstance(args.get('filters'), list):
         parts = ['{0} {1} {2}'.format(f.get('field'), f.get('operator'),
                                       ', '.join(str(v) for v in f.get('values') or []))

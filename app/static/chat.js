@@ -158,13 +158,14 @@
   function searchBlock(search) {
     var box = el('details', 'search');
     if (search.error) {
-      box.appendChild(el('summary', 'search-failed', 'Event search failed'));
+      box.appendChild(el('summary', 'search-failed', 'Search failed'));
       box.appendChild(el('p', null, search.error));
       return box;
     }
     var count = search.rows.length;
-    var noun = search.grouped ? 'group' : 'event';
-    box.appendChild(el('summary', null, 'Event search: ' + count + ' ' + noun +
+    var title = search.title || 'Event search';
+    var noun = title === 'Health metrics' ? 'row' : search.grouped ? 'group' : 'event';
+    box.appendChild(el('summary', null, title + ': ' + count + ' ' + noun +
       (count === 1 ? '' : 's') + (count >= search.limited_to ? ' (capped at ' +
       search.limited_to + ')' : '')));
     box.appendChild(el('pre', 'aql', search.aql));

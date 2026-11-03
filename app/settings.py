@@ -84,6 +84,8 @@ def summary():
 CONFIG = {
     'aql_max_window_days': {'default': 7, 'min': 1, 'max': 30,
                             'label': 'Maximum time range of an event search, in days'},
+    'health_max_window_hours': {'default': 24, 'min': 1, 'max': 168,
+                                'label': 'Maximum time range of a health metrics query, in hours'},
     'claude_model': {'default': claude.DEFAULT_MODEL, 'choices': list(claude.MODELS),
                      'label': 'Claude model'},
 }

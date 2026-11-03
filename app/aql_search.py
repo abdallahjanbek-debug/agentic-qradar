@@ -229,17 +229,18 @@ def _condition(spec, narrowed=False):
     return _in_list('qid', _ints(values, field), negate)
 
 
-def _time_clause(time_range, max_days):
+def _time_clause_minutes(time_range, max_minutes, max_label):
+    """(AQL time clause, minutes) for {"last_minutes": n} or {"start", "end"} in console time,
+    at most max_minutes long. max_label describes the maximum in errors, e.g. "7 days"."""
     if not isinstance(time_range, dict):
         raise SearchError('time_range is required: {"last_minutes": n} or {"start": ..., '
                           '"end": ...}.')
-    max_minutes = max_days * 1440
     if 'last_minutes' in time_range:
         minutes = time_range['last_minutes']
         if not isinstance(minutes, int) or isinstance(minutes, bool) or \
                 not 1 <= minutes <= max_minutes:
-            raise SearchError('last_minutes must be 1 to {0} ({1} days, the configured '
-                              'maximum).'.format(max_minutes, max_days))
+            raise SearchError('last_minutes must be 1 to {0} ({1}, the configured '
+                              'maximum).'.format(max_minutes, max_label))
         return 'LAST {0} MINUTES'.format(minutes), minutes
     try:
         # Console-local time, which is also the container's time zone.
@@ -252,10 +253,14 @@ def _time_clause(time_range, max_days):
     if minutes < 1:
         raise SearchError('end must be after start.')
     if minutes > max_minutes:
-        raise SearchError('The time range is {0:.1f} days; the maximum is {1} days.'.format(
-            minutes / 1440, max_days))
+        raise SearchError('The time range is {0:.1f} hours; the maximum is {1}.'.format(
+            minutes / 60, max_label))
     return 'START {0} STOP {1}'.format(int(start.timestamp() * 1000),
                                        int(end.timestamp() * 1000)), minutes
+
+
+def _time_clause(time_range, max_days):
+    return _time_clause_minutes(time_range, max_days * 1440, '{0} days'.format(max_days))
 
 
 def _grouping(group_by):
@@ -316,7 +321,7 @@ def _cancel(search_id):
                 ok=(200, 202))
 
 
-def _run(aql, should_stop):
+def _run(aql, should_stop, limit=RESULT_LIMIT):
     resp = qradar.call('POST', 'api/ariel/searches', params={'query_expression': aql},
                        ok=(200, 201))
     search_id = resp.json()['search_id']
@@ -340,7 +345,7 @@ def _run(aql, should_stop):
                                   .format(SEARCH_TIMEOUT_SECONDS // 60))
             time.sleep(POLL_SECONDS)
         results = qradar.call('GET', 'api/ariel/searches/{0}/results'.format(search_id),
-                              headers={'Range': 'items=0-{0}'.format(RESULT_LIMIT - 1)})
+                              headers={'Range': 'items=0-{0}'.format(limit - 1)})
         return results.json().get('events', [])
     finally:
         try:
@@ -349,30 +354,43 @@ def _run(aql, should_stop):
             qpylib.log('Could not delete Ariel search {0}'.format(search_id), level='WARNING')
 
 
-def search(request, owner, should_stop=lambda: False):
-    """Build, validate and run one search. Returns a dict for Claude and the chat UI.
-    should_stop() is checked while the search runs; True cancels it (the Stop button)."""
+def run_guarded(build_aql, request, owner, should_stop=lambda: False, limit=RESULT_LIMIT):
+    """The safeguards every agent search shares: build the AQL (build_aql() returns it plus
+    anything the caller needs), validate it with QRadar, respect the concurrency cap, run it
+    with the time limit and Stop, and record the attempt in the audit table.
+    Returns (rows, extra). Raises SearchError."""
     started = time.time()
     aql = None
     status = 'rejected'
     rows = []
     try:
-        aql, minutes, columns = build(request)
+        aql, extra = build_aql()
         errors = validate(aql)
         if errors:
             raise SearchError('QRadar rejected the query: ' + '; '.join(errors))
         if not _slots.acquire(blocking=False):
-            raise SearchError('{0} event searches are already running; try again shortly.'
+            raise SearchError('{0} searches are already running; try again shortly.'
                               .format(MAX_CONCURRENT_SEARCHES))
         try:
             status = 'failed'
-            rows = _run(aql, should_stop)
+            rows = _run(aql, should_stop, limit)
             status = 'completed'
         finally:
             _slots.release()
     finally:
         chatstore.record_search(owner, aql, request, status, len(rows),
                                 int((time.time() - started) * 1000))
+    return rows, (aql, extra)
+
+
+def search(request, owner, should_stop=lambda: False):
+    """Build, validate and run one event search. Returns a dict for Claude and the chat UI.
+    should_stop() is checked while the search runs; True cancels it (the Stop button)."""
+    def build_aql():
+        aql, minutes, columns = build(request)
+        return aql, (minutes, columns)
+
+    rows, (aql, (minutes, columns)) = run_guarded(build_aql, request, owner, should_stop)
     for row in rows:
         # QRadar returns SUM() as a double; show whole counts as whole numbers.
         count = row.get('Event Count')

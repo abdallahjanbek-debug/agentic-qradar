@@ -100,14 +100,30 @@
 
   var limits = document.getElementById('search-limits');
   var windowInput = document.getElementById('window-days');
+  var healthInput = document.getElementById('health-window-hours');
 
   function showConfig(config) {
-    var spec = config && config.aql_max_window_days;
-    if (!spec) return;
-    windowInput.value = spec.value;
-    windowInput.min = spec.min;
-    windowInput.max = spec.max;
+    [[windowInput, config && config.aql_max_window_days],
+      [healthInput, config && config.health_max_window_hours]].forEach(function (pair) {
+      if (!pair[1]) return;
+      pair[0].value = pair[1].value;
+      pair[0].min = pair[1].min;
+      pair[0].max = pair[1].max;
+    });
   }
+
+  document.getElementById('health-window-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var value = parseInt(healthInput.value, 10);
+    showResult(limits, 'pending', 'Saving…');
+    call('PUT', 'api/config/health_max_window_hours', { value: value })
+      .then(function (data) {
+        showConfig(data.config);
+        showResult(limits, 'ok', 'Saved. Health metrics queries may now cover up to ' + value +
+          ' hours.');
+      })
+      .catch(function (err) { showResult(limits, 'error', err.message); });
+  });
 
   document.getElementById('window-form').addEventListener('submit', function (event) {
     event.preventDefault();
