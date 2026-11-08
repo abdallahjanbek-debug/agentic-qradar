@@ -7,6 +7,8 @@ Anthropic's Claude.
 It works as a new **AI Admin** tab in the QRadar console. It can look things up and explain them,
 but it never changes anything in QRadar.
 
+![AI Admin reviewing every log source and explaining what's missing](docs/screenshots/overview.png)
+
 ## What it does
 
 ### Chat
@@ -20,15 +22,25 @@ Ask a question and AI Admin finds the answer in QRadar, for example:
 - *"Show disk usage per partition on the console."* It also covers events per second, memory
   and CPU.
 
+![A yes/no answer on whether a device is sending events](docs/screenshots/chat-connectivity.png)
+
 Each answer shows the searches the assistant ran. A link opens the same search in QRadar's Log
-Activity tab. Chats are saved for each administrator, and you can choose which Claude model
-answers.
+Activity tab.
+
+![Login attempts per user, with a link to the same search in Log Activity](docs/screenshots/chat-event-search.png)
+
+Chats are saved for each administrator. Each chat can use a different Claude model, chosen at the
+top of the chat.
+
+![Starting a new chat and choosing the Claude model](docs/screenshots/model-picker.png)
 
 ### Checking many devices at once
 
 Upload an Excel list of IP addresses and/or hostnames, and AI Admin checks each one. You get back
 a spreadsheet that sorts them into **connected**, **not connected** and **not found**. You can
 then ask the assistant about the results.
+
+![Results of an Excel upload, and the assistant's advice on what to fix first](docs/screenshots/bulk-check.png)
 
 ### Findings
 
@@ -43,6 +55,31 @@ Each finding says who ran the search and how often, and explains why it is costl
 it. Administrators can acknowledge, resolve or ignore it, or ask the assistant about it. More
 kinds of findings are planned, such as noisy log sources and high event volumes that aren't
 needed.
+
+![The Findings view with two costly searches](docs/screenshots/findings.png)
+
+## Use cases
+
+**Morning health check.** Ask *"Review my log source integration"*. You get a list of sources
+that stopped sending, never sent anything, or show errors, with what to do about each.
+
+**"Is this device logging?"** A network team asks whether their new firewalls are in QRadar.
+Paste the IP addresses into the chat, or upload their Excel list, and get back which are
+connected, not connected or not found.
+
+**Looking into a user's logins.** Ask *"Show login attempts for jsmith over the last 24 hours"*.
+You get the successful and failed logins with first and last times, and a link that opens the same
+search in Log Activity.
+
+**Capacity check.** Ask *"Which partitions are over 50% used?"* or *"What's our EPS trend
+today?"*. The answer comes from QRadar's own health metrics, already converted to GB, percent or
+events per second.
+
+![Disk usage per partition, taken from QRadar's health metrics](docs/screenshots/chat-disk-usage.png)
+
+**Finding searches that slow QRadar down.** The Findings view flags slow and costly searches as
+they happen, shows who ran them, and explains how to rewrite them. Click **Ask the agent about
+this** to work out a fix in the chat.
 
 ## Built to be safe
 
@@ -67,7 +104,15 @@ needed.
 1. Install the app package in QRadar under **Admin → Extensions Management**.
 2. Open **Admin → AI Admin Settings**. Enter the QRadar token and the Anthropic API key, and
    choose the default model.
-3. Open the **AI Admin** tab and start asking.
+
+   ![AI Admin Settings: credentials and default model](docs/screenshots/settings.png)
+
+3. Optionally, turn on the expensive searches check and adjust the limits further down the same
+   page.
+
+   ![AI Admin Settings: Findings and search limits](docs/screenshots/settings-findings.png)
+
+4. Open the **AI Admin** tab and start asking.
 
 ## Status
 
