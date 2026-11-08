@@ -61,6 +61,20 @@
         <p class="result" aria-live="polite"></p>
       </section>
 
+      <section class="card" id="findings-card">
+        <h2>Findings</h2>
+        <p class="help">
+          Scheduled checks shown in the Findings tab of AI Admin. Expensive searches are found from
+          QRadar's search audit log (SIM Audit): long-running searches, heavy scans and filters that
+          cannot use indexes. Checks start from when they are turned on; nothing earlier is reviewed.
+        </p>
+        <form id="findings-form" autocomplete="off">
+          <div class="config-grid" id="findings-fields"></div>
+          <button type="submit">Save</button>
+        </form>
+        <p class="result" aria-live="polite"></p>
+      </section>
+
       <section class="card" id="search-limits">
         <h2>Event searches</h2>
         <p class="help">

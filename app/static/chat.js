@@ -486,6 +486,22 @@
   var theme = new URLSearchParams(window.location.search).get('theme');
   if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
 
+  // Shared with findings.js (loaded after this file).
+  window.aiAdmin = {
+    api: api,
+    markdown: markdown,
+    logActivityLink: logActivityLink,
+    el: el,
+    // Switch to the Chat view and open a chat, optionally with a message ready to send.
+    openChatWith: function (chatId, draft) {
+      window.aiAdmin.showView('chat');
+      openChat(chatId).then(function () {
+        if (draft) input.value = draft;
+        input.focus();
+      });
+    }
+  };
+
   // Load the models, then open the most recent chat or show the welcome message.
   loadModels().then(function () { return api('GET', 'api/chats'); }).then(function (data) {
     renderChatList(data.chats);

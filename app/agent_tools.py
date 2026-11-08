@@ -11,7 +11,7 @@ import json
 import os
 import time
 
-from . import aql_search, health_metrics, logsources, qradar
+from . import aql_search, findingstore, health_metrics, logsources, qradar
 
 MAX_RESULTS = 200
 MAX_TARGETS = 500
@@ -385,6 +385,49 @@ TOOLS.append({
     'needs_context': True,
 })
 
+def list_findings(args):
+    status = args.get('status', 'open')
+    if status not in findingstore.STATUSES + ('any',):
+        raise ToolError('status must be one of: {0}, any.'.format(', '.join(findingstore.STATUSES)))
+    severity = args.get('severity')
+    if severity is not None and severity not in findingstore.SEVERITY_ORDER:
+        raise ToolError('severity must be critical, warning or info.')
+    limit = _int(args.get('limit'), 'limit', 1, 50, 20)
+    found = findingstore.search(category=args.get('category'), severity=severity,
+                                status=None if status == 'any' else status, limit=limit)
+    return {'count': len(found), 'findings': [{
+        'id': f['id'], 'category': f['category'], 'severity': f['severity'],
+        'status': f['status'], 'title': f['title'], 'occurrences': f['occurrences'],
+        'first_seen': _local_time(f['first_seen']), 'last_seen': _local_time(f['last_seen']),
+        'reasons': f['details'].get('reasons'), 'user': f['details'].get('user'),
+        'source': f['details'].get('source'),
+        'aql': (f['details'].get('aql') or '')[:1500] or None,
+        'latest_statistics': f['details'].get('last'),
+        'analysis': (f.get('analysis') or '')[:2000] or None,
+    } for f in found]}
+
+
+TOOLS.append({
+    'name': 'list_findings',
+    'description': (
+        'List the scheduled findings shown in the Findings tab: problems AI Admin found on its '
+        'own schedule, starting with expensive searches (long-running, heavy scans, filters '
+        'that cannot use indexes). Each finding has a severity, a status (open, acknowledged, '
+        'resolved, ignored), how often it happened, the user and source, the query and '
+        'statistics, and Claude\'s earlier analysis if any. Defaults to open findings.'),
+    'input_schema': {
+        'type': 'object',
+        'properties': {
+            'status': {'type': 'string', 'enum': list(findingstore.STATUSES) + ['any']},
+            'severity': {'type': 'string', 'enum': ['critical', 'warning', 'info']},
+            'category': {'type': 'string', 'enum': ['expensive_searches']},
+            'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50},
+        },
+        'additionalProperties': False,
+    },
+    'handler': list_findings,
+})
+
 _BY_NAME = {tool['name']: tool for tool in TOOLS}
 
 LABELS = {
@@ -394,6 +437,7 @@ LABELS = {
     'check_targets': 'Checking targets',
     'search_events': 'Searching events',
     'query_health_metrics': 'Querying health metrics',
+    'list_findings': 'Reading findings',
 }
 
 

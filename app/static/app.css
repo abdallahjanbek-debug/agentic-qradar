@@ -29,6 +29,10 @@
 
 * { box-sizing: border-box; }
 
+/* The hidden attribute must win over display rules such as .agent { display: grid },
+   or hidden views and badges stay on screen. */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; margin: 0; }
 
 body {
@@ -342,3 +346,97 @@ table.matches { border-collapse: collapse; width: 100%; background: var(--surfac
 }
 .answered-by { margin-top: 6px; color: var(--muted); font-size: 11px; }
 .log-activity { display: inline-block; margin: 4px 0 0; color: var(--accent); font-size: 12px; font-weight: 600; }
+
+/* Chat / Findings views */
+body { display: flex; flex-direction: column; }
+.agent, .findings { flex: 1; min-height: 0; }
+.app-tabs { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--border); }
+.app-tab {
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-badge {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  background: var(--warn-text);
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.tab-badge.critical { background: var(--bad-text); }
+
+.findings { overflow-y: auto; padding: 16px; }
+.findings-header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.findings-header h1 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+.findings-header p { margin: 0; color: var(--muted); }
+.findings-tasks { display: flex; gap: 8px; flex-wrap: wrap; }
+.findings-task {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+}
+.findings-task-name { font-weight: 600; }
+.findings-task-status { color: var(--muted); grid-column: 1; }
+.findings-task-error { color: var(--bad-text); grid-column: 1; }
+.findings-task button { grid-row: 1 / span 3; grid-column: 2; }
+.findings-filters { display: flex; gap: 16px; align-items: center; margin: 16px 0 8px; color: var(--muted); font-size: 12px; }
+.findings-filters select { margin-left: 6px; padding: 4px 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; }
+.findings-count { margin-left: auto; }
+.findings-empty { color: var(--muted); }
+.error-text { color: var(--bad-text); }
+
+.finding {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--warn-text);
+  background: var(--surface);
+}
+.finding.critical { border-left-color: var(--bad-text); }
+.finding-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.finding-head h2 { margin: 0; font-size: 14px; font-weight: 600; flex: 1; }
+.pill.sev-critical { background: var(--bad-bg); color: var(--bad-text); text-transform: uppercase; }
+.pill.sev-warning { background: var(--warn-bg); color: var(--warn-text); text-transform: uppercase; }
+.pill.status { background: var(--off-bg); color: var(--off-text); }
+.finding-meta { margin: 6px 0; color: var(--muted); font-size: 12px; }
+.finding-reasons { margin: 0 0 6px; padding-left: 18px; }
+.finding-details summary { cursor: pointer; font-weight: 600; font-size: 12px; margin: 4px 0; }
+.finding-stats { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+.finding-stats th { padding: 2px 12px 2px 0; color: var(--muted); font-weight: normal; text-align: left; }
+.finding-stats td { padding: 2px 0; }
+.finding-label { margin: 10px 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.finding .aql {
+  margin: 0;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  font-family: "IBM Plex Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.finding-analysis { padding: 6px 8px; background: var(--bg); }
+.muted { color: var(--muted); }
+.finding-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.finding-actions button { padding: 5px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+.finding-actions .secondary { border: 1px solid var(--accent); background: transparent; color: var(--accent); }
+.finding-actions .primary { border: 1px solid var(--accent); background: var(--accent); color: #ffffff; }
+.findings-task .secondary { padding: 5px 12px; border: 1px solid var(--accent); background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.findings-task .secondary:disabled { opacity: 0.5; cursor: default; }
+.agent { height: auto; }
+.config-grid { display: grid; grid-template-columns: minmax(220px, 1fr) 160px; gap: 8px 12px; align-items: center; margin: 8px 0; }
+.config-grid select, .config-grid input { padding: 6px 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }

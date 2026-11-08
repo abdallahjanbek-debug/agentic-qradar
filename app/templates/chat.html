@@ -7,7 +7,13 @@
     <link href="static/app.css" rel="stylesheet">
   </head>
   <body>
-    <div class="agent">
+    <nav class="app-tabs" aria-label="AI Admin views">
+      <button type="button" class="app-tab active" data-view="chat">Chat</button>
+      <button type="button" class="app-tab" data-view="findings">Findings
+        <span id="findings-badge" class="tab-badge" hidden></span></button>
+    </nav>
+
+    <div class="agent" id="view-chat">
       <aside class="sidebar" aria-label="Chats">
         <button id="new-chat" type="button" class="new-chat">+ New chat</button>
         <ul id="chat-list" class="chat-list"></ul>
@@ -64,9 +70,40 @@
       </main>
     </div>
 
+    <section class="findings" id="view-findings" hidden>
+      <header class="findings-header">
+        <div>
+          <h1>Findings</h1>
+          <p>Problems AI Admin finds on its own schedule, shared by all admins. It never changes QRadar.</p>
+        </div>
+        <div id="findings-tasks" class="findings-tasks"></div>
+      </header>
+      <div class="findings-filters">
+        <label>Severity
+          <select id="findings-severity">
+            <option value="">All</option>
+            <option value="critical">Critical</option>
+            <option value="warning">Warning</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="findings-status">
+            <option value="open">Open</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="resolved">Resolved</option>
+            <option value="ignored">Ignored</option>
+            <option value="">All</option>
+          </select>
+        </label>
+        <span id="findings-count" class="findings-count"></span>
+      </div>
+      <div id="findings-list" class="findings-list" aria-live="polite"></div>
+    </section>
+
     <script src="static/qjslib/qappfw.min.js"></script>
     <script src="static/vendor/marked-12.0.2.min.js"></script>
     <script src="static/vendor/purify-3.1.6.min.js"></script>
     <script src="static/chat.js"></script>
+    <script src="static/findings.js"></script>
   </body>
 </html>

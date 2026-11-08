@@ -166,8 +166,62 @@
 
   loadModels();
 
+  // ---- Findings: a small form built from the config specs the server sends.
+  var FINDINGS_FIELDS = ['findings_expensive_searches', 'findings_interval_minutes',
+    'findings_long_warning_minutes', 'findings_long_critical_minutes', 'findings_heavy_scan_gb',
+    'findings_auto_analysis', 'findings_model'];
+  var findingsCard = document.getElementById('findings-card');
+  var findingsFields = document.getElementById('findings-fields');
+
+  function showFindingsConfig(config) {
+    findingsFields.textContent = '';
+    FINDINGS_FIELDS.forEach(function (name) {
+      var spec = config[name];
+      if (!spec) return;
+      var label = document.createElement('label');
+      label.textContent = spec.label;
+      label.htmlFor = 'cfg-' + name;
+      var field;
+      if (spec.choices) {
+        field = document.createElement('select');
+        spec.choices.forEach(function (choice) {
+          var option = document.createElement('option');
+          option.value = choice;
+          option.textContent = choice;
+          option.selected = choice === spec.value;
+          field.appendChild(option);
+        });
+      } else {
+        field = document.createElement('input');
+        field.type = 'number';
+        field.min = spec.min;
+        field.max = spec.max;
+        field.step = 1;
+        field.value = spec.value;
+      }
+      field.id = 'cfg-' + name;
+      field.dataset.config = name;
+      findingsFields.appendChild(label);
+      findingsFields.appendChild(field);
+    });
+  }
+
+  document.getElementById('findings-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var fields = Array.prototype.slice.call(findingsFields.querySelectorAll('[data-config]'));
+    showResult(findingsCard, 'pending', 'Saving…');
+    fields.reduce(function (chain, field) {
+      return chain.then(function () {
+        var value = field.type === 'number' ? parseInt(field.value, 10) : field.value;
+        return call('PUT', 'api/config/' + field.dataset.config, { value: value });
+      });
+    }, Promise.resolve())
+      .then(function () { showResult(findingsCard, 'ok', 'Saved. The scheduler picks this up within a minute.'); })
+      .catch(function (err) { showResult(findingsCard, 'error', err.message); });
+  });
+
   call('GET', 'api/settings')
-    .then(function (data) { showAll(data.settings); showConfig(data.config); })
+    .then(function (data) { showAll(data.settings); showConfig(data.config); showFindingsConfig(data.config); })
     .catch(function (err) {
       cards.forEach(function (card) {
         card.querySelector('.status').textContent = '';

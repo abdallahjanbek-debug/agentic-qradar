@@ -1,13 +1,13 @@
 {
   "name": "AI Admin",
   "description": "AI agent for QRadar administrators, powered by Claude. Read-only.",
-  "version": "0.7.0",
+  "version": "0.8.3",
   "uuid": "f781e08d-13c2-471d-94da-9608d21b540e",
   "image": "qradar-app-base:4.0.2",
   "use_qradar_csrf": "true",
   "single_instance_only": "true",
   "resources": {
-    "memory": 256
+    "memory": 384
   },
   "areas": [
     {
@@ -29,6 +29,22 @@
       "required_capabilities": [
         "ADMIN"
       ]
+    }
+  ],
+  "services": [
+    {
+      "name": "scheduler",
+      "version": "1",
+      "command": "python3 -m app.scheduler",
+      "directory": "/opt/app-root",
+      "autostart": "true",
+      "autorestart": "true",
+      "startsecs": 5,
+      "stopwaitsecs": 20,
+      "redirect_stderr": "true",
+      "stdout_logfile": "/opt/app-root/store/log/scheduler.log",
+      "stdout_logfile_maxbytes": "5MB",
+      "stdout_logfile_backups": 3
     }
   ]
 }

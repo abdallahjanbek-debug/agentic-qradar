@@ -88,6 +88,22 @@ CONFIG = {
                                 'label': 'Maximum time range of a health metrics query, in hours'},
     'claude_model': {'default': claude.DEFAULT_MODEL, 'choices': list(claude.MODELS),
                      'label': 'Claude model'},
+    # Scheduled findings.
+    'findings_expensive_searches': {'default': 'on', 'choices': ['on', 'off'],
+                                    'label': 'Expensive searches task'},
+    'findings_interval_minutes': {'default': 10, 'min': 5, 'max': 1440,
+                                  'label': 'How often the findings tasks run, in minutes'},
+    'findings_long_warning_minutes': {'default': 5, 'min': 1, 'max': 1440,
+                                      'label': 'Search duration for a warning, in minutes'},
+    'findings_long_critical_minutes': {'default': 15, 'min': 1, 'max': 1440,
+                                       'label': 'Search duration for a critical finding, in '
+                                                'minutes'},
+    'findings_heavy_scan_gb': {'default': 10, 'min': 1, 'max': 100000,
+                               'label': 'Data scanned by one search for a finding, in GB'},
+    'findings_auto_analysis': {'default': 'on', 'choices': ['on', 'off'],
+                               'label': 'Analyse new findings with Claude automatically'},
+    'findings_model': {'default': claude.DEFAULT_MODEL, 'choices': list(claude.MODELS),
+                       'label': 'Claude model for findings analysis'},
 }
 
 
